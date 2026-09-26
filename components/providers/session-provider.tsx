@@ -60,9 +60,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       };
       setState(stateFromProbe(body));
     } catch {
-      // If the session endpoint itself is unreachable there is nothing to sign
-      // in to; let the page render and let the individual reads surface it.
-      setState("open");
+      // The page still renders — reads are open by design, and hiding the mesh
+      // over a failed probe would be its own lie. What is withdrawn is the
+      // claim that the console is connected: this used to `setState("open")`,
+      // which reported `canWrite: true` and lit up every control the server
+      // would then refuse. Unknown is a state of its own, not a pass.
+      setState("unreachable");
     }
   }, []);
 

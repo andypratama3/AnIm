@@ -11,6 +11,9 @@ import * as real from "../../lib/data/agent-chat.ts";
 
 export const CHATTABLE_PROFILES = real.CHATTABLE_PROFILES;
 export const isChatProfile = real.isChatProfile;
+// The history formatter reads the real limit so a stubbed conversation cannot
+// drift from the one the bridge actually enforces.
+export const MAX_PROMPT_CHARS = real.MAX_PROMPT_CHARS;
 
 /** Test-controlled behaviour of the stubbed agent call. */
 export const agent = {

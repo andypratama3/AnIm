@@ -61,13 +61,13 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
     return <div className="p-8 text-sm text-muted-foreground">Checking session…</div>;
   }
 
-  if (state === "misconfigured") {
-    // The console still renders. Reads are open by design — `/api/mesh` and
-    // `/api/mesh-live` carry no secrets — so replacing the app with a card
-    // would hide the one thing an operator can still usefully look at, while
-    // telling them to go and set a token they may not be allowed to set. The
-    // server already refuses the writes; this says so where the work happens
-    // rather than walling the page off.
+  if (state === "misconfigured" || state === "unreachable") {
+    // The console still renders in both cases. Reads are open by design —
+    // `/api/mesh` and `/api/mesh-live` carry no secrets — so replacing the app
+    // with a card would hide the one thing an operator can still usefully look
+    // at. The server already refuses the writes; this says so where the work
+    // happens rather than walling the page off.
+    const misconfigured = state === "misconfigured";
     return (
       <div className="min-h-[100dvh]">
         <div
@@ -81,10 +81,21 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
               className="mt-px shrink-0 text-destructive"
             />
             <p className="min-w-0 text-[13px] leading-snug text-muted-foreground">
-              <span className="font-medium text-foreground">Writes are disabled.</span> This
-              deployment runs in production without <code>ANIM_API_TOKEN</code>, so every write is
-              refused on purpose rather than left open. Reading the mesh still works. Set the token
-              on the host to re-enable it.
+              {misconfigured ? (
+                <>
+                  <span className="font-medium text-foreground">Writes are disabled.</span> This
+                  deployment runs in production without <code>ANIM_API_TOKEN</code>, so every
+                  write is refused on purpose rather than left open. Reading the mesh still works.
+                  Set the token on the host to re-enable it.
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">Read-only: session unknown.</span>{" "}
+                  The session check did not come back, so the console cannot tell whether this
+                  browser holds a valid session. Nothing has been signed in and nothing is being
+                  written. Reading the mesh still works.
+                </>
+              )}
             </p>
           </div>
         </div>

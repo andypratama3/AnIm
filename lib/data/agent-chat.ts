@@ -7,7 +7,7 @@ const HOST = process.env.ANIM_SSH_HOST ?? "root@72.61.141.91";
 const HERMES_BIN = "/home/bor/.local/bin/hermes";
 const CHAT_TIMEOUT_MS = Number(process.env.ANIM_CHAT_TIMEOUT_MS ?? 180_000);
 const MAX_OUTPUT_BYTES = 256 * 1024;
-const MAX_PROMPT_CHARS = 4_000;
+export const MAX_PROMPT_CHARS = 4_000;
 
 /**
  * Profiles that may be addressed. This is a hard allowlist rather than a

@@ -70,9 +70,16 @@ agents shows that agent's history instead of a shared pile.
 - `DELETE /api/agent-chat?profile=…` clears one conversation, and only that one.
 - Transcripts contain real agent output, so `GET` and `DELETE` require the same
   token as sending.
-- The agent is **not** given prior turns as context; `hermes -p` is a one-shot
-  call. The transcript is an audit log, not agent memory, and the UI does not
-  claim otherwise.
+- `hermes -p` is still a one-shot call: every turn is a fresh process, so no
+  agent carries state of its own. Prior turns are instead re-supplied on every
+  request as context, assembled **on the server from the server's own
+  transcript** — the client posts `{ profile, prompt }` and cannot dictate what
+  the agent is told about the past. It is a transcript handed over each time,
+  not memory the agent retains.
+- That context is bounded, and degrades rather than fails: the question is never
+  truncated, prior turns are trimmed oldest-first until the prompt fits
+  `MAX_PROMPT_CHARS`, a single turn is capped, and a failed delivery is skipped.
+  A long conversation sends a short context; it does not return a 400.
 
 ### Write endpoints: auth and rate limits
 
