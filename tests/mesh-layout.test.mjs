@@ -8,10 +8,17 @@ import {
   arcSpacing,
   bubblesFit,
   bubbleRadius,
+  CENTER,
+  contentViewBox,
+  GLYPH_FONT,
   isActive,
+  LABEL_HALF_WIDTH,
   labelOffsets,
+  NAME_FONT,
   ORCH_RADIUS,
+  PORT_FONT,
   RADIUS,
+  SIZE,
   visibleLinks,
 } from "@/lib/data/mesh-layout";
 import { MESH_LINKS, PROFILES } from "@/lib/data/profiles";
@@ -140,4 +147,56 @@ test("the component draws and counts from the same filtered list", async () => {
   for (const symbol of ["activeAgents(", "visibleLinks(", "bubbleRadius("]) {
     assert.ok(source.includes(symbol), `${symbol} must be wired into the component`);
   }
+});
+
+test("the viewBox is shorter than the old square, which is the point", () => {
+  const [, , width, height] = contentViewBox().split(" ").map(Number);
+  // 620x620 forced the card to be as tall as it was wide. The cropped box is
+  // what lets the mesh card fit on a screen.
+  assert.ok(height < SIZE, `height ${height} must be under the old ${SIZE}`);
+  assert.ok(width / height > 1.1, "the box should use the width it is given");
+});
+
+test("every bubble and port label fits inside the cropped box", () => {
+  const [x, y, width, height] = contentViewBox().split(" ").map(Number);
+  const right = x + width;
+  const bottom = y + height;
+
+  for (const count of [1, 2, 7, 8, 26]) {
+    for (let index = 0; index < count; index += 1) {
+      const angle = (index / count) * Math.PI * 2 - Math.PI / 2;
+      const px = CENTER + Math.cos(angle) * RADIUS;
+      const py = CENTER + Math.sin(angle) * RADIUS;
+      // The widest bubble, the orchestrator's, is used for every node so the
+      // check does not quietly pass because the sample was all small ones.
+      const r = ORCH_RADIUS;
+      assert.ok(px - r >= x, `${count} nodes: left bubble edge clipped`);
+      assert.ok(px + r <= right, `${count} nodes: right bubble edge clipped`);
+      assert.ok(py - r >= y, `${count} nodes: top bubble edge clipped`);
+      // Port label sits below the bubble, so the bottom node is the tight one.
+      assert.ok(py + PORT_FONT + 6 <= bottom, `${count} nodes: port label clipped`);
+    }
+  }
+});
+
+test("the widest registry name still fits within the horizontal allowance", () => {
+  // "principal-engineer" is the longest id in the registry. The label is centred
+  // under its bubble, so what matters is the room from a node at the ring
+  // extreme to the edge of the box — not the label allowance on its own.
+  const [x, , width] = contentViewBox().split(" ").map(Number);
+  const room = x + width - (CENTER + RADIUS);
+  const needed = ("principal-engineer".length * NAME_FONT * 0.62) / 2;
+  assert.ok(
+    needed <= room,
+    `"principal-engineer" needs ${needed.toFixed(0)}px, the box leaves ${room.toFixed(0)}px`,
+  );
+  assert.ok(room >= LABEL_HALF_WIDTH, "the allowance must fit inside the box");
+});
+
+test("label fonts are not scaled below what the old square rendered", () => {
+  // The box is smaller, so the SVG draws it larger on screen. These are the
+  // sizes the crop has to pay for, and they must not quietly shrink again.
+  assert.ok(NAME_FONT >= 10, "name labels stay at least as legible as before");
+  assert.ok(PORT_FONT >= 9, "port labels stay at least as legible as before");
+  assert.ok(GLYPH_FONT >= 10, "glyphs stay at least as legible as before");
 });

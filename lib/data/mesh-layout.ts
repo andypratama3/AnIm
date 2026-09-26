@@ -36,13 +36,13 @@ export function labelOffsets(agentId: string) {
   return {
     /** 4-character glyph, optically centred on the circle. */
     glyph: r * 0.36,
-    glyphFont: agentId === "default" ? 12 : 10,
+    glyphFont: agentId === "default" ? GLYPH_FONT + 2 : GLYPH_FONT,
     /** Full agent id, under the bubble. */
     name: r + 16,
-    nameFont: 9.5,
+    nameFont: NAME_FONT,
     /** Port, below the id. */
     port: r + 26,
-    portFont: 8.5,
+    portFont: PORT_FONT,
   };
 }
 
@@ -92,4 +92,38 @@ export function activeAgents(agents: Agent[]): Agent[] {
 export function visibleLinks(links: MeshLink[], agents: Agent[]): MeshLink[] {
   const shown = new Set(activeAgents(agents).map((agent) => agent.id));
   return links.filter((link) => shown.has(link.source) && shown.has(link.target));
+}
+
+/** Label sizes, in viewBox units. */
+export const GLYPH_FONT = 12;
+export const NAME_FONT = 11;
+export const PORT_FONT = 10;
+
+/**
+ * Half the width the widest agent id can claim, at NAME_FONT.
+ *
+ * "principal-engineer" is the longest name in the registry. The estimate is
+ * deliberately generous: the name labels sit below their bubbles, so the
+ * horizontal spill only matters for the nodes nearest the left and right of the
+ * ring.
+ */
+export const LABEL_HALF_WIDTH = 60;
+
+/** Clear space under the port line. */
+const LABEL_PAD = 6;
+
+/**
+ * The box the drawing actually needs.
+ *
+ * A square 620×620 viewBox wasted roughly 50px on every side and forced the
+ * card to be as tall as it was wide, which is most of why the mesh card did not
+ * fit a screen. Cropping to the real extent is a 20% shorter card, and because
+ * the SVG scales to fit, it also makes the labels larger on screen at the same
+ * card width.
+ */
+export function contentViewBox(radius: number = RADIUS): string {
+  const halfX = radius + ORCH_RADIUS + LABEL_HALF_WIDTH;
+  const top = CENTER - (radius + ORCH_RADIUS);
+  const bottom = CENTER + radius + AGENT_RADIUS + PORT_FONT + LABEL_PAD;
+  return `${CENTER - halfX} ${top} ${halfX * 2} ${bottom - top}`;
 }

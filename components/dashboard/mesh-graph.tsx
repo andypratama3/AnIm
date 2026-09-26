@@ -13,11 +13,11 @@ import { hottestAgent, meanLatency } from "@/lib/data/mesh-metrics";
 import {
   activeAgents,
   bubbleRadius,
+  contentViewBox,
   labelOffsets,
   visibleLinks,
   CENTER,
   RADIUS,
-  SIZE,
 } from "@/lib/data/mesh-layout";
 
 export function MeshGraph({ agents, className }: { agents: Agent[]; className?: string }) {
@@ -63,7 +63,12 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
 
   return (
     <div className={cn("relative", className)}>
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} className="w-full" role="img" aria-label="Mesh topology">
+      <svg
+        viewBox={contentViewBox()}
+        className="mx-auto w-full max-h-[min(58vh,440px)]"
+        role="img"
+        aria-label="Mesh topology"
+      >
         <defs>
           <radialGradient id="mesh-core">
             <stop offset="0%" stopColor="var(--brand)" stopOpacity="0.22" />
