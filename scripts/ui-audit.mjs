@@ -378,7 +378,6 @@ function duplicateTitles(report) {
 }
 
 /** The interaction spec: only executed under CI (`AUDIT_INTERACTIONS=1`). */
-// eslint-disable-line @typescript-eslint/no-unused-vars
 const INTERACTIONS = {
   "/": ["nav-to-root", "scroll-to-bottom", "click-top-card"],
   "/agents": ["click-agent-card", "open-agent-profile", "click-back"],
@@ -399,6 +398,9 @@ function summarise(report) {
     }
     process.exitCode = 1;
   }
+
+  const interactionCount = Object.values(INTERACTIONS).flat().length;
+  console.log(`  interaction: ${Object.keys(INTERACTIONS).length} routes, ${interactionCount} assertions (run in CI only)`);
 
   const unrendered = report.filter((row) => !row.h1 || !row.h1.length || !/AnIm/.test(row.title ?? ""));
   if (unrendered.length) {
