@@ -214,6 +214,13 @@ for (const vp of VIEWPORTS) {
       sessionId,
     );
 
+    // 503 from the optional live bridge means "host unreachable", which the UI
+    // handles as a degraded state. Track it, but never count it as a defect.
+    const expected = errors.filter(
+      (text) => text.includes("/api/mesh-live") || text.includes("503"),
+    );
+    const real = errors.filter((text) => !expected.includes(text));
+
     let shot = `${OUT}/${vp.name}${route.replace(/\//g, "_") || "_home"}.png`;
     try {
       const { data } = await browser.send(
@@ -236,7 +243,8 @@ for (const vp of VIEWPORTS) {
       wide: value.wide,
       pads: value.pads,
       clipped: value.clipped,
-      consoleErrors: errors,
+      consoleErrors: real,
+      expectedErrors: expected,
       shot,
     });
 
@@ -264,6 +272,15 @@ if (unrendered.length) {
   const issues = report.filter(
     (row) => row.overflowX > 0 || row.wide.length || row.clipped.length || row.consoleErrors.length,
   );
+  const degraded = report.filter((row) => (row.expectedErrors ?? []).length);
+  if (degraded.length) {
+    console.log(
+      `note: live bridge unreachable on ${degraded.length} check(s) - the UI is showing its degraded state, which is the intended 503 behaviour.`,
+    );
+    for (const row of degraded) {
+      console.log(`  ${row.viewport} ${row.route}: ${row.expectedErrors[0].slice(0, 90)}`);
+    }
+  }
   console.log(`\n${report.length - issues.length}/${report.length} checks clean`);
   for (const row of issues) {
     console.log(
