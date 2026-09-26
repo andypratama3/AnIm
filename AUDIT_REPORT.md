@@ -7,7 +7,7 @@
 - Gateway: 7 running (ports 9900-9906 LISTEN)
 - A2A mesh: all enabled, peers complete (6/7, self missing expected)
 - Models: all openrouter / thinkingmachines/inkling:free
-- API key: 7/7 valid sk-or-v1-e82... (free_tier true; usage 0.002)
+- API key: 7/7 valid sk-or-v1-*** (free_tier true; usage 0.002)
 - MCP: 7/7 obsidian wired; vault=/home/bor/Documents/Obsidian/Hermes-Agent
 - Vault: present with Projects/Daily/Research/Memory-Review/Skills-Notes/Templates/README.md/Agent-Note.md
 - Kanban: board default empty

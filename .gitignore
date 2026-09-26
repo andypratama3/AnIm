@@ -22,7 +22,6 @@
 
 # misc
 .DS_Store
-*.pem
 
 # debug
 npm-debug.log*
@@ -32,6 +31,38 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+!.env.template
+
+# agent mesh runtime state — never commit live agent data
+/agents/.runtime/
+*.sock
+*.pid
+*.db
+gateway_state.json
+a2a_audit.jsonl
+.skills_prompt_snapshot.json
+models_dev_cache.json
+
+# credentials / keys — never commit
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials.json
+auth.json
+secrets/
+*_rsa
+*_ed25519
+.netrc
+.npmrc
+
+# local scratch
+/tmp/
+*.local
+*.log
 
 # vercel
 .vercel
