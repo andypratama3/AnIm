@@ -50,6 +50,30 @@ SSH and returns a typed snapshot.
   returns env values, tokens, or file bodies.
 - Filename allowlist stays `*.md`. Do not widen it.
 
+### Conversation transcripts
+
+Chat history is file-backed per profile under `.data/chat/<profile>.json`
+(`lib/data/chat-store.ts`), so a reload keeps the conversation and switching
+agents shows that agent's history instead of a shared pile.
+
+- The profile comes from the chattable allowlist before it is used as a path
+  segment, which is what makes traversal impossible. An unroutable profile
+  raises rather than returning an empty log, so a typo cannot look like an
+  erased conversation.
+- The user's message is written **before** the agent is called, so a timeout or
+  a dead transport still leaves the question on record. A failed reply is stored
+  with `failed: true` and renders as an error, never as a normal answer.
+- Writes are atomic; the log is capped at `ANIM_CHAT_MAX_MESSAGES` and the
+  number of discarded turns is reported to the UI rather than dropped silently.
+- The server returns the stored transcript with every reply, and the client
+  replaces local state with it, so the screen cannot drift from the file.
+- `DELETE /api/agent-chat?profile=…` clears one conversation, and only that one.
+- Transcripts contain real agent output, so `GET` and `DELETE` require the same
+  token as sending.
+- The agent is **not** given prior turns as context; `hermes -p` is a one-shot
+  call. The transcript is an audit log, not agent memory, and the UI does not
+  claim otherwise.
+
 ### Write endpoints: auth and rate limits
 
 `app/api/agent-chat` executes a one-shot prompt against a named Hermes profile.
@@ -91,6 +115,28 @@ Each agent owns one port, `9900`–`9925`, unique with no gaps. Seven existing
 gateways hold `9900`–`9906`; the 19 new profiles are configured for
 `9907`–`9925` but are **not started**. Do not start them on the agent server
 without an explicit decision and a capacity check.
+
+**The mesh range is server-private and must stay that way.** A gateway binds
+`127.0.0.1`, never `0.0.0.0`. The ports carry agent cards and peer material, and
+nothing outside the host needs to reach them: the dashboard reads them over SSH,
+and the browser only ever talks to its own Next server. The host also runs
+`iptables` with `INPUT` policy `DROP`, opening just `22`, `80`, `443` and `icmp`.
+
+Verify it at any time — read-only, no writes to the server:
+
+```
+npm run check:ports
+```
+
+It exits non-zero if any mesh port binds a non-loopback address, or if a
+firewall rule opens the range. A future gateway started with the wrong bind
+address is the realistic way this breaks, and that is the case the check exists
+to catch.
+
+Note that a port being closed does not mean the profile is unusable: the
+`hermes -p <profile>` CLI can address a profile whose gateway is not listening,
+so "19 stopped" describes the gateways, not the profiles.
+
 
 ## Layout invariants
 

@@ -10,7 +10,8 @@
     "scan:secrets": "bash scripts/secret-scan.sh --all",
     "test": "node --experimental-strip-types --import ./tests/register.mjs --test tests/*.test.mjs",
     "verify": "npm run scan:secrets && tsc --noEmit && npm run lint && npm test && npm run build",
-    "audit:ui": "node scripts/ui-audit.mjs"
+    "audit:ui": "node scripts/ui-audit.mjs",
+    "check:ports": "bash scripts/check-port-exposure.sh"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

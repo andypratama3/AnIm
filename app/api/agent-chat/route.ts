@@ -1,5 +1,11 @@
 import { chatWithProfile, isChatProfile, CHATTABLE_PROFILES } from "@/lib/data/agent-chat";
 import {
+  appendExchange,
+  clearTranscript,
+  newMessage,
+  readTranscript,
+} from "@/lib/data/chat-store";
+import {
   acquireSlot,
   checkAuth,
   checkRateLimit,
@@ -12,13 +18,46 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 200;
 
 export async function GET(request: Request) {
-  // Profile names are not sensitive, but the route still requires the token so
-  // the endpoint surface cannot be enumerated anonymously.
+  // Transcripts hold real agent output, so the same token applies as for sending.
   const auth = checkAuth(request);
   if (!auth.ok) {
     return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
   }
-  return Response.json({ profiles: CHATTABLE_PROFILES }, { headers: guardHeaders() });
+
+  const requested = new URL(request.url).searchParams.get("profile");
+
+  if (requested === null) {
+    return Response.json({ profiles: CHATTABLE_PROFILES }, { headers: guardHeaders() });
+  }
+
+  if (!isChatProfile(requested)) {
+    return Response.json(
+      { error: "unknown or non-addressable profile" },
+      { status: 400, headers: guardHeaders() },
+    );
+  }
+
+  const transcript = await readTranscript(requested);
+  return Response.json(transcript, { headers: guardHeaders() });
+}
+
+/** Drop a profile's history. The operator asked for it, so it is not a loss. */
+export async function DELETE(request: Request) {
+  const auth = checkAuth(request);
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
+  }
+
+  const requested = new URL(request.url).searchParams.get("profile");
+  if (!isChatProfile(requested)) {
+    return Response.json(
+      { error: "unknown or non-addressable profile" },
+      { status: 400, headers: guardHeaders() },
+    );
+  }
+
+  await clearTranscript(requested);
+  return Response.json({ profile: requested, messages: [], dropped: 0 }, { headers: guardHeaders() });
 }
 
 export async function POST(request: Request) {
@@ -62,12 +101,43 @@ export async function POST(request: Request) {
     );
   }
 
+  // The question is recorded before the agent is contacted. If the process dies
+  // or the operator closes the tab, the transcript still shows what was asked.
+  const outgoing = newMessage("you", profile, prompt.trim());
+
   try {
     const result = await chatWithProfile(profile, prompt);
+
+    const transcript = await appendExchange({
+      profile,
+      outgoing,
+      incoming: newMessage(
+        "agent",
+        profile,
+        result.ok ? result.reply : `Delivery failed: ${result.error}`,
+        { elapsedMs: result.elapsedMs, failed: !result.ok },
+      ),
+    });
+
     if (!result.ok) {
-      return Response.json(result, { status: 502, headers: guardHeaders() });
+      return Response.json(
+        { ...result, transcript },
+        { status: 502, headers: guardHeaders() },
+      );
     }
-    return Response.json(result, { headers: guardHeaders() });
+    return Response.json({ ...result, transcript }, { headers: guardHeaders() });
+  } catch (err) {
+    // A transport-level throw must still leave the question on record.
+    const detail = err instanceof Error ? err.message : "unknown failure";
+    const transcript = await appendExchange({
+      profile,
+      outgoing,
+      incoming: newMessage("agent", profile, `Transport error: ${detail}`, { failed: true }),
+    });
+    return Response.json(
+      { ok: false, profile, error: detail, transcript },
+      { status: 502, headers: guardHeaders() },
+    );
   } finally {
     releaseSlot();
     if (Math.random() < 0.05) pruneRateLimits();

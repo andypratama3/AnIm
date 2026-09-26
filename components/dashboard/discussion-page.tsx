@@ -42,7 +42,7 @@ type WorkItem = {
   title: string;
   owner: string;
   reviewer: string;
-  phase: Phase;
+  state: Phase;
   updatedAt: number;
 };
 
@@ -78,6 +78,8 @@ function DiscussionConsole() {
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [dropped, setDropped] = useState(0);
+  const [loadingLog, setLoadingLog] = useState(false);
   const [logQuery, setLogQuery] = useState("");
   const [work, setWork] = useState<WorkItem[]>([]);
   const [queueBusy, setQueueBusy] = useState(false);
@@ -99,6 +101,58 @@ function DiscussionConsole() {
     };
   }, []);
 
+  /**
+   * The server owns the transcript, so switching agents loads that agent's
+   * history instead of showing whatever the last one said. A 401 leaves the log
+   * empty rather than replaying another agent's messages to an unauthenticated
+   * reader.
+   */
+  const loadTranscript = useCallback(async (profile: string) => {
+    setLoadingLog(true);
+    try {
+      const response = await fetch(`/api/agent-chat?profile=${encodeURIComponent(profile)}`, {
+        cache: "no-store",
+      });
+      if (response.status === 401) {
+        setMessages([]);
+        setDropped(0);
+        return;
+      }
+      const body = (await response.json()) as { messages?: Message[]; dropped?: number };
+      if (Array.isArray(body.messages)) {
+        setMessages(body.messages);
+        setDropped(typeof body.dropped === "number" ? body.dropped : 0);
+      }
+    } catch {
+      setMessages([]);
+      setDropped(0);
+    } finally {
+      setLoadingLog(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Deferred for the same reason as the queue below: the effect body itself
+    // must not perform a synchronous setState.
+    const kick = window.setTimeout(() => void loadTranscript(target), 0);
+    return () => window.clearTimeout(kick);
+  }, [loadTranscript, target]);
+
+  const clearLog = useCallback(async () => {
+    const profile = target;
+    try {
+      const response = await fetch(`/api/agent-chat?profile=${encodeURIComponent(profile)}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) return;
+      setMessages([]);
+      setDropped(0);
+      toast.success(`Conversation with ${profile} cleared`);
+    } catch {
+      toast.error("Could not clear the conversation");
+    }
+  }, [target]);
+
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
@@ -115,15 +169,31 @@ function DiscussionConsole() {
     if (!text || sending) return;
 
     const userMessage: Message = {
-      id: `you-${Date.now()}`,
+      id: `pending-${Date.now()}`,
       from: "you",
       profile: target,
       text,
       ts: Date.now(),
     };
+    // Shown immediately; replaced by the stored transcript once the server has
+    // actually written it, so the log never disagrees with the file.
     setMessages((current) => [...current, userMessage]);
     setPrompt("");
     setSending(true);
+
+    /** Failures the server never stored are shown locally and flagged. */
+    const appendLocalFailure = (label: string) =>
+      setMessages((current) => [
+        ...current,
+        {
+          id: `local-${Date.now()}`,
+          from: "agent",
+          profile: target,
+          text: label,
+          ts: Date.now(),
+          failed: true,
+        },
+      ]);
 
     try {
       const response = await fetch("/api/agent-chat", {
@@ -131,63 +201,50 @@ function DiscussionConsole() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profile: target, prompt: text }),
       });
-      // A 401 means the session expired rather than the agent failing, so say so
-      // instead of reporting it as a delivery failure.
-      if (response.status === 401) {
-        const reason = "session expired - reload and sign in again";
-        setMessages((current) => [
-          ...current,
-          {
-            id: `agent-${Date.now()}`,
-            from: "agent",
-            profile: target,
-            text: `Not delivered: ${reason}`,
-            ts: Date.now(),
-            failed: true,
-          },
-        ]);
-        toast.error("Sign in required", { description: reason });
-        return;
-      }
 
-      const body = (await response.json()) as {
+      const body = (await response.json().catch(() => ({}))) as {
         ok?: boolean;
         reply?: string;
         error?: string;
         elapsedMs?: number;
+        transcript?: { messages: Message[]; dropped: number };
       };
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: `agent-${Date.now()}`,
-          from: "agent",
-          profile: target,
-          text: body.ok ? (body.reply ?? "") : `Delivery failed: ${body.error ?? "unknown error"}`,
-          ts: Date.now(),
-          elapsedMs: body.elapsedMs,
-          failed: !body.ok,
-        },
-      ]);
+      // Anything the server accepted and recorded replaces local state outright.
+      if (body.transcript) {
+        setMessages(body.transcript.messages);
+        setDropped(body.transcript.dropped ?? 0);
+      }
+
+      // A 401 means the session expired rather than the agent failing, so say so
+      // instead of reporting it as a delivery failure.
+      if (response.status === 401) {
+        const reason = "session expired - reload and sign in again";
+        appendLocalFailure(`Not delivered: ${reason}`);
+        toast.error("Sign in required", { description: reason });
+        return;
+      }
+
+      if (response.status === 429 || response.status === 503) {
+        const reason = body.error ?? "throttled";
+        if (!body.transcript) appendLocalFailure(`Not delivered: ${reason}`);
+        toast.error("Not delivered", { description: reason });
+        return;
+      }
 
       if (body.ok) {
-        toast.success(`${target} replied`, { description: `${((body.elapsedMs ?? 0) / 1000).toFixed(1)}s round trip` });
+        toast.success(`${target} replied`, {
+          description: `${((body.elapsedMs ?? 0) / 1000).toFixed(1)}s round trip`,
+        });
       } else {
+        if (!body.transcript) {
+          appendLocalFailure(`Delivery failed: ${body.error ?? "unknown error"}`);
+        }
         toast.error("No reply", { description: body.error });
       }
     } catch (err) {
       const reason = err instanceof Error ? err.message : "network failure";
-      setMessages((current) => [
-        ...current,
-        {
-          id: `agent-${Date.now()}`,
-          from: "agent",
-          profile: target,
-          text: `Transport error: ${reason}`,
-          ts: Date.now(),
-          failed: true,
-        },
-      ]);
+      appendLocalFailure(`Transport error: ${reason}`);
       toast.error("Transport error", { description: reason });
     } finally {
       setSending(false);
@@ -211,12 +268,12 @@ function DiscussionConsole() {
         item.title.toLowerCase().includes(q) ||
         item.owner.toLowerCase().includes(q) ||
         item.reviewer.toLowerCase().includes(q) ||
-        item.phase.toLowerCase().includes(q),
+        item.state.toLowerCase().includes(q),
     );
   }, [work, logQuery]);
 
-  const verified = useMemo(() => visibleWork.filter((item) => item.phase === "VERIFIED"), [visibleWork]);
-  const pending = useMemo(() => visibleWork.filter((item) => item.phase !== "VERIFIED"), [visibleWork]);
+  const verified = useMemo(() => visibleWork.filter((item) => item.state === "VERIFIED"), [visibleWork]);
+  const pending = useMemo(() => visibleWork.filter((item) => item.state !== "VERIFIED"), [visibleWork]);
 
   const loadQueue = useCallback(async () => {
     try {
@@ -244,7 +301,7 @@ function DiscussionConsole() {
     async (id: string) => {
       const item = work.find((entry) => entry.id === id);
       if (!item || queueBusy) return;
-      const next = NEXT_PHASE[item.phase];
+      const next = NEXT_PHASE[item.state];
       if (!next) return;
       setQueueBusy(true);
       try {
@@ -367,10 +424,20 @@ function DiscussionConsole() {
               <span className="text-[11px] text-ink-subtle">
                 <kbd className="font-mono">⌘</kbd> + <kbd className="font-mono">Enter</kbd> to send
               </span>
-              <Button variant="primary" size="sm" onClick={() => void send()} disabled={sending || !prompt.trim()}>
-                <PaperPlaneTiltIcon size={14} />
-                {sending ? "waiting for agent…" : "Send"}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="subtle"
+                  size="xs"
+                  onClick={() => void clearLog()}
+                  disabled={messages.length === 0}
+                >
+                  Clear log
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => void send()} disabled={sending || !prompt.trim()}>
+                  <PaperPlaneTiltIcon size={14} />
+                  {sending ? "waiting for agent…" : "Send"}
+                </Button>
+              </div>
             </div>
 
             <Input
@@ -384,7 +451,17 @@ function DiscussionConsole() {
               ref={logRef}
               className="max-h-[26rem] min-h-[12rem] space-y-2.5 overflow-y-auto rounded-2xl border border-hairline bg-surface-2/50 p-3"
             >
-              {visibleMessages.length === 0 ? (
+              {dropped > 0 ? (
+                <p className="mb-1 rounded-lg bg-warn/8 px-2.5 py-1.5 text-[11px] text-warn">
+                  {dropped} earlier {dropped === 1 ? "message was" : "messages were"} dropped to
+                  keep this log bounded.
+                </p>
+              ) : null}
+              {loadingLog ? (
+                <p className="px-1 py-6 text-center text-[12px] text-ink-subtle">
+                  Loading conversation with {target}…
+                </p>
+              ) : visibleMessages.length === 0 ? (
                 <p className="px-1 py-6 text-center text-[12px] text-ink-subtle">
                   {logQuery.trim()
                     ? "Nothing in this conversation matches your search."
@@ -488,9 +565,9 @@ function DiscussionConsole() {
                 <div key={item.id} className="rounded-2xl border border-hairline bg-surface-2/60 px-3.5 py-3">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <p className="min-w-0 flex-1 text-[12.5px] text-ink-muted">{item.title}</p>
-                    <Badge tone={PHASE_TONE[item.phase] as "ok"}>
+                    <Badge tone={PHASE_TONE[item.state] as "ok"}>
                       <Dot tone="var(--ink-subtle)" />
-                      {item.phase}
+                      {item.state}
                     </Badge>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
@@ -501,10 +578,10 @@ function DiscussionConsole() {
                       variant="subtle"
                       size="xs"
                       onClick={() => void advance(item.id)}
-                      disabled={queueBusy || !NEXT_PHASE[item.phase]}
+                      disabled={queueBusy || !NEXT_PHASE[item.state]}
                     >
-                      {NEXT_PHASE[item.phase]
-                        ? `advance to ${NEXT_PHASE[item.phase]}`
+                      {NEXT_PHASE[item.state]
+                        ? `advance to ${NEXT_PHASE[item.state]}`
                         : "terminal"}
                     </Button>
                   </div>

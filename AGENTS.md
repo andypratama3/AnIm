@@ -48,6 +48,12 @@ This repo is pushed to a public GitHub remote. Nothing secret may enter it.
 - Read-only by default. Writes require a fresh backup first, and never a build.
 - Backing up before any remote change is mandatory:
   `/home/bor/.hermes.backup-anim-<timestamp>/`.
+- **The mesh ports `9900`–`9925` are server-private.** A gateway must bind
+  `127.0.0.1`, never `0.0.0.0`. The dashboard reaches them over SSH and needs
+  nothing else. Before or after touching gateway startup, run
+  `npm run check:ports` from the Mac — it is read-only and exits non-zero if any
+  of those ports is bound off-loopback or opened in the firewall. Never add an
+  ingress rule for that range.
 
 ## 4. Dashboard quality bar
 
