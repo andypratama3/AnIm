@@ -13,7 +13,13 @@ export type EventKind =
 export type Agent = {
   id: string;
   role: string;
-  port: number;
+  /**
+   * `null` when the collector did not report one. Rendering `:0` is the same
+   * lie as rendering `0 ms` latency: it looks like a measurement, and the
+   * registry only assigns ports to a handful of agents, so the unassigned
+   * majority would read as "port 0" everywhere in the UI.
+   */
+  port: number | null;
   status: AgentStatus;
   model: string;
   provider: string;
@@ -66,7 +72,6 @@ export type MeshSnapshot = {
   totals: MeshTotals;
   series: Series;
   heat: HeatCell[];
-  events: ActivityEvent[];
 };
 
 export type Series = {

@@ -25,6 +25,20 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
+/**
+ * Compact inline port. `Agent.port` is `null` for the many agents the registry
+ * never assigns one to, so `:${port}` would read as ":null" and `:0` would read
+ * as a real port. An em dash matches how the unmeasured metrics already render.
+ */
+export function formatPort(port: number | null | undefined): string {
+  return typeof port === "number" ? `:${port}` : "—";
+}
+
+/** Prose form, for sentences rather than labels. */
+export function describePort(port: number | null | undefined): string {
+  return typeof port === "number" ? `port ${port}` : "no port assigned";
+}
+
 export function formatMs(value: number | null | undefined): string {
   if (value == null) return NOT_MEASURED;
   if (value >= 1000) return `${(value / 1000).toFixed(2)}s`;

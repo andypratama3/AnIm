@@ -24,7 +24,7 @@ import { useConsole } from "@/components/providers/console-provider";
 import { useMesh } from "@/lib/hooks/use-data";
 import { useCopyToClipboard, useMounted, useTicker } from "@/lib/hooks/use-ui";
 import { useFullscreen } from "@/lib/hooks/use-fullscreen";
-import { formatClock, formatRelative } from "@/lib/format";
+import { formatClock, formatRelative, formatPort } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Badge, Dot, Kbd } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/controls";
@@ -48,11 +48,11 @@ import { cn } from "@/lib/utils";
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   "/": { title: "Overview", sub: "Mesh pulse" },
   "/agents": { title: "Agents", sub: "Profile topology" },
-  "/activity": { title: "Activity", sub: "Event stream" },
+  "/activity": { title: "Activity", sub: "Recorded events" },
   "/kanban": { title: "Kanban", sub: "Task flow" },
   "/analytics": { title: "Analytics", sub: "Trends" },
   "/discussion": { title: "Discussion", sub: "Agent channel" },
-  "/notes": { title: "Vault", sub: "Obsidian notes" },
+  "/notes": { title: "Notes", sub: "Working notes" },
   "/settings": { title: "Settings", sub: "Configuration" },
 };
 
@@ -186,7 +186,7 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onSelect={() => {
-                if (data) void copy(data.agents.map((agent) => `${agent.id}:${agent.port}`).join("\n"));
+                if (data) void copy(data.agents.map((agent) => `${agent.id}${formatPort(agent.port)}`).join("\n"));
               }}
             >
               {copied ? <CheckIcon className="text-ok" /> : <CopyIcon />} Copy peer map

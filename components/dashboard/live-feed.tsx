@@ -140,8 +140,8 @@ export function LiveFeed({
 
   return (
     <SectionCard
-      title="Live stream"
-      description="Every A2A hop, tool call and gateway event, newest first."
+      title="Recorded activity"
+      description="Task transitions and agent exchanges as they were recorded, newest first. Nothing here is generated."
       className={className}
       bodyClassName="px-2 sm:px-2"
       actions={
@@ -193,9 +193,16 @@ export function LiveFeed({
       ) : events.length === 0 ? (
         <div className="grid place-items-center gap-2 px-6 py-12 text-center">
           <PulseIcon size={20} className="text-ink-subtle" />
-          <p className="text-[13px] font-medium">No events match</p>
-          <p className="text-[12px] text-ink-subtle">
-            Widen the level filter or clear the search box.
+          {/* Two different empties. Telling someone to widen the filter when the
+              log has never held an entry sends them off to fix a filter that
+              was never the problem. */}
+          <p className="text-[13px] font-medium">
+            {data?.total ? "No events match" : "Nothing recorded yet"}
+          </p>
+          <p className="max-w-sm text-[12px] text-ink-subtle">
+            {data?.total
+              ? "Widen the level filter or clear the search box."
+              : "This log fills as tasks move through review and questions reach an agent. It holds records, not a generated sample."}
           </p>
         </div>
       ) : (

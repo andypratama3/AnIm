@@ -119,7 +119,6 @@ export async function getMeshSnapshot(): Promise<MeshSnapshot> {
     ...fallback,
     source: "live",
     agents,
-    events: fallback.events,
     totals: {
       ...fallback.totals,
       online: agents.filter((a) => a.status === "online").length,

@@ -6,7 +6,7 @@ import { useConsole } from "@/components/providers/console-provider";
 import { MESH_LINKS } from "@/lib/data/profiles";
 import { STATUS_COLOR, AgentGlyph } from "@/components/dashboard/agent-glyph";
 import { Badge } from "@/components/ui/badge";
-import { formatMs, formatPercent } from "@/lib/format";
+import { formatMs, formatPercent, formatPort } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { hottestAgent, meanLatency } from "@/lib/data/mesh-metrics";
@@ -198,7 +198,7 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
                 className="fill-[var(--ink-subtle)]"
                 style={{ fontSize: label.portFont, fontFamily: "var(--font-mono)" }}
               >
-                :{agent.port}
+                {formatPort(agent.port)}
               </text>
             </g>
           );
@@ -282,7 +282,7 @@ export function AgentStrip({
           <AgentGlyph id={agent.id} accent={agent.accent} size={28} status={agent.status} pulse={false} />
           <span className="flex flex-col items-start leading-tight">
             <span className="text-[12px] font-medium">{agent.id}</span>
-            <span className="font-mono text-[10px] text-ink-subtle">:{agent.port}</span>
+            <span className="font-mono text-[10px] text-ink-subtle">{formatPort(agent.port)}</span>
           </span>
         </button>
       ))}
