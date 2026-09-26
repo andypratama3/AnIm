@@ -43,15 +43,42 @@ const CHROME = resolveChrome();
 const BRIDGE_PATH = "/api/mesh-live";
 
 /**
- * Does this console error mean "the optional live bridge is unreachable"?
+ * Is this console error the deployment being deliberately degraded?
  *
- * Only a 503 on the bridge itself counts. Matching the text "503" instead would
- * also hide a real 503 from any other endpoint, and would hide a genuine defect
- * that merely mentions a number like 503. The status must come from the
- * Network domain, never from the log prose.
+ * Two cases, and both have to be recognised from the HTTP status rather than
+ * from the log prose — matching the text "503" would also hide a real 503 from
+ * an unrelated endpoint, and would hide a defect that merely mentions the
+ * number.
+ *
+ * 1. The optional live bridge is unreachable: a 503 on the bridge itself.
+ * 2. The deploy has no `ANIM_API_TOKEN`, so every guarded endpoint answers 503
+ *    on purpose. That is a real refusal, not a broken page, and the console
+ *    renders a banner about it. The audit has to know the mode rather than
+ *    hardcoding a list of endpoints, or the next guarded route to be added
+ *    would fail CI for behaving exactly as designed.
  */
-export function isBridgeUnavailable(error) {
-  return error.url.includes(BRIDGE_PATH) && error.status === 503;
+export function isBridgeUnavailable(error, { misconfigured = false } = {}) {
+  if (error?.status !== 503) return false;
+  if (String(error?.url ?? "").includes(BRIDGE_PATH)) return true;
+  return misconfigured && String(error?.url ?? "").includes("/api/");
+}
+
+/**
+ * Ask the server which mode it is in.
+ *
+ * A deploy with no token refuses writes by design; without knowing that, the
+ * audit cannot tell a deliberate refusal from a genuine outage. An unreachable
+ * session endpoint is treated as "not misconfigured", so the audit keeps
+ * failing on real 503s when it cannot establish the mode.
+ */
+export async function readDeployMode(base) {
+  try {
+    const response = await fetch(`${base}/api/session`, { cache: "no-store" });
+    const body = await response.json().catch(() => ({}));
+    return { misconfigured: body?.misconfigured === true };
+  } catch {
+    return { misconfigured: false };
+  }
 }
 
 const ROUTES = ["/", "/agents", "/activity", "/kanban", "/analytics", "/discussion", "/notes", "/settings"];
@@ -64,6 +91,11 @@ async function main() {
   mkdirSync(OUT, { recursive: true });
   console.log(`chrome: ${CHROME}`);
   console.log(`target: ${BASE}`);
+
+  const mode = await readDeployMode(BASE);
+  console.log(
+    `mode: ${mode.misconfigured ? "no ANIM_API_TOKEN, writes refused by design" : "token configured"}`,
+  );
 
   const chrome = spawn(
     CHROME,
@@ -268,7 +300,7 @@ async function main() {
       // real 503 from any other endpoint, and would hide a genuine defect that
       // merely mentions a number like 503.
       const expected = errors.filter(isBridgeUnavailable);
-      const real = errors.filter((e) => !isBridgeUnavailable(e));
+      const real = errors.filter((e) => !isBridgeUnavailable(e, mode));
 
       let shot = `${OUT}/${vp.name}${route.replace(/\//g, "_") || "_home"}.png`;
       try {
@@ -309,6 +341,18 @@ async function main() {
   // Guard against a false all-clear: if the app never rendered (dev server down,
   // build error, wrong port) every measurement reads zero and the audit would
   // happily report "clean". Fail loudly instead.
+  // The summary is for humans; the JSON is the artefact. A throw while printing
+  // must not cost us the report, because the run that cannot describe a defect
+  // is exactly the run that most needs one.
+  try {
+    summarise(report);
+  } finally {
+    writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 2));
+  }
+  console.log(`wrote ${OUT}/report.json (${report.length} checks)`);
+}
+
+function summarise(report) {
   const unrendered = report.filter((row) => !row.h1 || !row.h1.length || !/AnIm/.test(row.title ?? ""));
   if (unrendered.length) {
     console.error(
@@ -327,7 +371,7 @@ async function main() {
         `note: live bridge unreachable on ${degraded.length} check(s) - the UI is showing its degraded state, which is the intended 503 behaviour.`,
       );
       for (const row of degraded) {
-        console.log(`  ${row.viewport} ${row.route}: ${row.expectedErrors[0].text.slice(0, 90)}`);
+        console.log(`  ${row.viewport} ${row.route}: ${describeError(row.expectedErrors[0])}`);
       }
     }
     console.log(`\n${report.length - issues.length}/${report.length} checks clean`);
@@ -338,12 +382,28 @@ async function main() {
       );
       for (const w of row.wide.slice(0, 3)) console.log(`       wide ${w.tag} w=${w.w} ${w.cls.slice(0, 70)}`);
       for (const c of row.clipped.slice(0, 3)) console.log(`       clip ${c.tag} ${c.text.slice(0, 60)}`);
-      for (const e of row.consoleErrors.slice(0, 3)) console.log(`       err  ${e.slice(0, 140)}`);
+      for (const e of row.consoleErrors.slice(0, 3)) console.log(`       err  ${describeError(e)}`);
     }
     if (issues.length) process.exitCode = 1;
   }
-  writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 2));
-  console.log(`wrote ${OUT}/report.json (${report.length} checks)`);
+}
+
+/**
+ * Render one captured console error.
+ *
+ * A console entry is `{ text, url, status }`, not a string. Printing it as one
+ * threw `e.slice is not a function` and took the whole audit down with it, on
+ * the exact run that had errors to report — so the failures were hidden behind
+ * the failure to describe them. `String()` covers both shapes, because a report
+ * that cannot describe a defect should still finish and say so.
+ */
+export function describeError(entry) {
+  if (entry == null) return "(no detail)";
+  if (typeof entry === "string") return entry.slice(0, 140);
+  const text = String(entry.text ?? entry).slice(0, 140);
+  const status = entry.status ? ` [${entry.status}]` : "";
+  const url = entry.url ? ` ${entry.url}` : "";
+  return `${text}${status}${url}`.slice(0, 200);
 }
 
 // Only drive a browser when run directly: tests import the classifier above and
