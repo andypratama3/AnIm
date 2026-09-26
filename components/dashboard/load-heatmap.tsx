@@ -10,7 +10,8 @@ import { useConsole } from "@/components/providers/console-provider";
 import { formatClock } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-function loadTone(load: number): string {
+function loadTone(load: number | null): string {
+  if (load == null) return "var(--ink-subtle)";
   if (load >= 85) return "var(--danger)";
   if (load >= 65) return "var(--warn)";
   if (load >= 40) return "var(--brand)";
@@ -170,7 +171,7 @@ export function PeerLoadBars() {
             />
           </div>
           <span className="w-10 shrink-0 text-right font-mono text-[11px] text-ink">
-            {Math.round(agent.load)}%
+            {agent.load == null ? "\u2014" : `${Math.round(agent.load)}%`}
           </span>
         </div>
       ))}

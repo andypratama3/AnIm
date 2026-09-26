@@ -21,8 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/menus";
 import { SectionCard, PageHeader } from "@/components/dashboard/page-header";
-import { SessionGate } from "@/components/dashboard/session-gate";
 import { toast } from "sonner";
+import { writeJson } from "@/lib/api/write";
+import { createTranscriptLoader, transcriptOutcome } from "@/lib/data/transcript-load";
 
 /** Mirrors the acceptance ladder in agents/registry.json. */
 type Phase = "PROPOSED" | "IN_PROGRESS" | "SELF_CHECKED" | "PEER_REVIEWED" | "VERIFIED" | "BLOCKED" | "FAILED";
@@ -103,47 +104,72 @@ function DiscussionConsole() {
 
   /**
    * The server owns the transcript, so switching agents loads that agent's
-   * history instead of showing whatever the last one said. A 401 leaves the log
-   * empty rather than replaying another agent's messages to an unauthenticated
-   * reader.
+   * history instead of showing whatever the last one said. A 401 or an
+   * unreadable body leaves the log empty rather than replaying another agent's
+   * messages to an unauthenticated reader.
+   *
+   * Each load cancels the previous one. Switching agents quickly used to start
+   * two requests, and whichever answered last won — so clicking through a few
+   * profiles could leave the previous agent's conversation on screen under the
+   * new agent's name. That is a wrong answer presented confidently, which is the
+   * one thing an audit view must never do.
    */
-  const loadTranscript = useCallback(async (profile: string) => {
-    setLoadingLog(true);
-    try {
-      const response = await fetch(`/api/agent-chat?profile=${encodeURIComponent(profile)}`, {
-        cache: "no-store",
-      });
-      if (response.status === 401) {
+  // useState with a lazy initialiser, not useRef(...).current: a ref read
+  // during render is how a component ends up holding a stale loader.
+  const [loader] = useState(createTranscriptLoader);
+
+  const loadTranscript = useCallback(
+    async (profile: string) => {
+      const controller = loader.start();
+      setLoadingLog(true);
+      try {
+        const response = await fetch(
+          `/api/agent-chat?profile=${encodeURIComponent(profile)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        const body = await response.json().catch(() => ({}));
+        const outcome = transcriptOutcome({
+          superseded: !loader.isCurrent(controller),
+          status: response.status,
+          body,
+        });
+        if (outcome.kind === "ignore") return;
+        if (outcome.kind === "clear") {
+          setMessages([]);
+          setDropped(0);
+          return;
+        }
+        setMessages(outcome.messages as Message[]);
+        setDropped(outcome.dropped);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (!loader.isCurrent(controller)) return;
         setMessages([]);
         setDropped(0);
-        return;
+      } finally {
+        if (loader.isCurrent(controller)) setLoadingLog(false);
       }
-      const body = (await response.json()) as { messages?: Message[]; dropped?: number };
-      if (Array.isArray(body.messages)) {
-        setMessages(body.messages);
-        setDropped(typeof body.dropped === "number" ? body.dropped : 0);
-      }
-    } catch {
-      setMessages([]);
-      setDropped(0);
-    } finally {
-      setLoadingLog(false);
-    }
-  }, []);
+    },
+    [loader],
+  );
 
   useEffect(() => {
     // Deferred for the same reason as the queue below: the effect body itself
     // must not perform a synchronous setState.
     const kick = window.setTimeout(() => void loadTranscript(target), 0);
-    return () => window.clearTimeout(kick);
-  }, [loadTranscript, target]);
+    return () => {
+      window.clearTimeout(kick);
+      loader.cancel();
+    };
+  }, [loadTranscript, target, loader]);
 
   const clearLog = useCallback(async () => {
     const profile = target;
     try {
-      const response = await fetch(`/api/agent-chat?profile=${encodeURIComponent(profile)}`, {
-        method: "DELETE",
-      });
+      const response = await writeJson(
+        `/api/agent-chat?profile=${encodeURIComponent(profile)}`,
+        { method: "DELETE" },
+      );
       if (!response.ok) return;
       setMessages([]);
       setDropped(0);
@@ -196,10 +222,8 @@ function DiscussionConsole() {
       ]);
 
     try {
-      const response = await fetch("/api/agent-chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ profile: target, prompt: text }),
+      const response = await writeJson("/api/agent-chat", {
+        json: { profile: target, prompt: text },
       });
 
       const body = (await response.json().catch(() => ({}))) as {
@@ -305,10 +329,9 @@ function DiscussionConsole() {
       if (!next) return;
       setQueueBusy(true);
       try {
-        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+        const response = await writeJson(`/api/tasks/${encodeURIComponent(id)}`, {
           method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ state: next, actor: item.reviewer }),
+          json: { state: next, actor: item.reviewer },
         });
         const body = (await response.json()) as WorkItem & { error?: string };
         if (!response.ok) {
@@ -316,11 +339,11 @@ function DiscussionConsole() {
           return;
         }
         setWork((current) => current.map((entry) => (entry.id === id ? body : entry)));
-        toast.success(`${id} \u2192 ${next}`, {
+        toast.success(`${id} → ${next}`, {
           description:
             next === "VERIFIED"
-              ? "Peer review recorded. Deliverable to the owner."
-              : "Recorded with reviewer attribution.",
+              ? `Attributed to ${item.reviewer}. Named by the operator, not independently verified — this console holds one shared session.`
+              : `Attributed to ${item.reviewer}, declared by the operator.`,
         });
       } catch {
         toast.error("Transition failed", { description: "could not reach the review store" });
@@ -334,7 +357,7 @@ function DiscussionConsole() {
   const resetQueue = useCallback(async () => {
     setQueueBusy(true);
     try {
-      const response = await fetch("/api/tasks", { method: "DELETE" });
+      const response = await writeJson("/api/tasks", { method: "DELETE" });
       if (!response.ok) {
         toast.error("Reset rejected");
         return;
@@ -626,9 +649,7 @@ function DiscussionConsole() {
 }
 
 export function DiscussionPage() {
-  return (
-    <SessionGate>
-      <DiscussionConsole />
-    </SessionGate>
-  );
+  // The sign-in gate now wraps the whole console in the root layout, so a
+  // refused write anywhere puts the operator back in front of that card.
+  return <DiscussionConsole />;
 }

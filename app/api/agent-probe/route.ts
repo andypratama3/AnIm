@@ -1,5 +1,11 @@
 import { isProbeProfile, probeAgent } from "@/lib/data/remote-probe";
-import { checkAuth, checkRateLimit, guardHeaders, pruneRateLimits } from "@/lib/security/guard";
+import {
+  checkAuth,
+  checkOrigin,
+  checkRateLimit,
+  guardHeaders,
+  pruneRateLimits,
+} from "@/lib/security/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -12,9 +18,19 @@ export const maxDuration = 30;
  * on demand.
  */
 export async function POST(request: Request) {
+  const origin = checkOrigin(request);
+  if (!origin.ok) {
+    return Response.json(
+      { error: origin.error },
+      { status: origin.status, headers: guardHeaders() },
+    );
+  }
   const auth = checkAuth(request);
   if (!auth.ok) {
-    return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
+    return Response.json(
+      { error: auth.error, code: auth.code },
+      { status: auth.status, headers: guardHeaders() },
+    );
   }
 
   const limit = checkRateLimit(`probe:${auth.client}`);

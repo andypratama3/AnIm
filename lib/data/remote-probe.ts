@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
 import { CHATTABLE_PROFILES, type ChatProfile } from "@/lib/data/agent-chat";
+import { portForProfile } from "@/lib/data/registry";
 
 const run = promisify(execFile);
 
@@ -19,35 +20,6 @@ export type ProbeResult = {
   error: string | null;
 };
 
-const PORTS: Record<string, number> = {
-  default: 9900,
-  "ceo-bor": 9901,
-  "agent-secretary": 9902,
-  "agent-operasi-produk": 9903,
-  "principal-engineer": 9904,
-  "fullstack-engineer": 9905,
-  backend: 9906,
-  frontend: 9907,
-  "ai-engineer": 9908,
-  "devops-engineer": 9909,
-  "security-engineer": 9910,
-  "qa-engineer": 9911,
-  "code-reviewer": 9912,
-  "hermes-operator": 9913,
-  "dashboard-engineer": 9914,
-  "automation-engineer": 9915,
-  "knowledge-agent": 9916,
-  "content-strategist": 9917,
-  "technical-writer": 9918,
-  "social-media": 9919,
-  "agent-pemasaran": 9920,
-  "agent-penjualan": 9921,
-  "agent-layanan": 9922,
-  "agent-keuangan": 9923,
-  "career-agent": 9924,
-  "management-research": 9925,
-};
-
 export function isProbeProfile(value: unknown): value is ChatProfile {
   return typeof value === "string" && (CHATTABLE_PROFILES as readonly string[]).includes(value);
 }
@@ -60,11 +32,13 @@ export function isProbeProfile(value: unknown): value is ChatProfile {
  * HTTP request against its A2A endpoint, then reports what came back, so the
  * latency on screen is measured rather than asserted.
  *
- * The remote command is a fixed literal; the port comes from a fixed table and is
- * interpolated as a validated integer, never from request input.
+ * The remote command is a fixed literal; the port comes from the registry and is
+ * interpolated as a validated integer, never from request input. A profile the
+ * registry has no port for is reported as unassigned rather than probed on a
+ * guessed port, which would read as an outage.
  */
 export async function probeAgent(profile: string): Promise<ProbeResult> {
-  const port = PORTS[profile];
+  const port = portForProfile(profile) ?? 0;
   const base: ProbeResult = {
     profile,
     port,
@@ -74,7 +48,7 @@ export async function probeAgent(profile: string): Promise<ProbeResult> {
     a2aMs: null,
     error: null,
   };
-  if (!port) return { ...base, error: "unknown profile" };
+  if (!port) return { ...base, error: "no port assigned in the registry" };
 
   const script = [
     "import json,socket,time,urllib.request,urllib.error",

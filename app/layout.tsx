@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ConsoleProvider } from "@/components/providers/console-provider";
+import { SessionProvider } from "@/components/providers/session-provider";
+import { SessionGate } from "@/components/dashboard/session-gate";
 import { AppShell } from "@/components/layout/app-shell";
 import { BRAND } from "@/lib/brand";
 
@@ -55,7 +57,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           themes={["dark", "light"]}
         >
           <ConsoleProvider>
-            <AppShell>{children}</AppShell>
+            <SessionProvider>
+              {/* Global, not per-page: a 401 from a task review or an agent probe
+                  has to be able to put the whole console behind the sign-in card. */}
+              <SessionGate>
+                <AppShell>{children}</AppShell>
+              </SessionGate>
+            </SessionProvider>
           </ConsoleProvider>
         </ThemeProvider>
       </body>

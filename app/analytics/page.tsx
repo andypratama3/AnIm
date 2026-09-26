@@ -66,7 +66,9 @@ export default function AnalyticsPage() {
         throughput: agent.throughput.at(-1) ?? 0,
         accent: agent.accent,
       }))
-      .sort((a, b) => b[metric] - a[metric]);
+      // Unmeasured metrics sort last instead of pretending to be 0, which
+      // would pin every offline agent to the top of a "lowest" ranking.
+      .sort((a, b) => (b[metric] ?? -Infinity) - (a[metric] ?? -Infinity));
   }, [data, metric]);
 
   if (isLoading || !data) {
@@ -94,9 +96,21 @@ export default function AnalyticsPage() {
 
   const exportCsv = () => {
     const header = "agent,status,health,latency_ms,load,tokens,queue,uptime\n";
+    // An unmeasured cell exports as an empty field, not as a 0 that a
+    // spreadsheet would happily total up.
+    const cell = (value: number | null) => (value == null ? "" : String(Math.round(value * 100) / 100));
     const body = rows
       .map((row) =>
-        [row.id, row.status, row.health.toFixed(1), Math.round(row.latency), Math.round(row.load), row.tokens, row.queue, row.uptime.toFixed(2)].join(","),
+        [
+          row.id,
+          row.status,
+          row.health.toFixed(1),
+          cell(row.latency),
+          cell(row.load),
+          cell(row.tokens),
+          cell(row.queue),
+          cell(row.uptime),
+        ].join(","),
       )
       .join("\n");
     const blob = new Blob([header + body], { type: "text/csv" });
@@ -260,7 +274,7 @@ export default function AnalyticsPage() {
                       <span className="font-mono text-[12px]">{formatMs(row.latency)}</span>
                     </TD>
                     <TD>
-                      <span className="font-mono text-[12px]">{Math.round(row.load)}%</span>
+                      <span className="font-mono text-[12px]">{formatPercent(row.load, 0)}</span>
                     </TD>
                     <TD>
                       <Sparkline
@@ -276,7 +290,7 @@ export default function AnalyticsPage() {
                     </TD>
                     <TD>
                       <span className="font-mono text-[12px] text-ink-muted">
-                        {row.uptime.toFixed(2)}%
+                        {formatPercent(row.uptime, 2)}
                       </span>
                     </TD>
                   </TR>

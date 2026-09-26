@@ -126,12 +126,18 @@ export async function getMeshSnapshot(): Promise<MeshSnapshot> {
       busy: agents.filter((a) => a.status === "busy").length,
       degraded: agents.filter((a) => a.status === "degraded").length,
       offline,
-      tasks: agents.reduce((sum, a) => sum + a.queue, 0),
-      tokens: agents.reduce((sum, a) => sum + a.tokens, 0),
-      avgLatency: Math.round(
-        agents.filter((a) => a.status !== "offline").reduce((sum, a) => sum + a.latencyMs, 0) /
-          Math.max(1, agents.length - offline),
-      ),
+      tasks: agents.reduce((sum, a) => sum + (a.queue ?? 0), 0),
+      tokens: agents.reduce((sum, a) => sum + (a.tokens ?? 0), 0),
+      // Only agents that actually reported a latency may contribute to the mean,
+      // and a mean over zero samples is unmeasured rather than zero.
+      avgLatency: (() => {
+        const seen = agents
+          .filter((a) => a.status !== "offline" && a.latencyMs != null)
+          .map((a) => a.latencyMs as number);
+        return seen.length > 0
+          ? Math.round(seen.reduce((sum, v) => sum + v, 0) / seen.length)
+          : null;
+      })(),
     },
   };
 }

@@ -1,3 +1,9 @@
+/**
+ * Unmeasured metrics render as an em dash. A hard `0 ms` would be
+ * indistinguishable from a genuinely instant hop.
+ */
+export const NOT_MEASURED = "\u2014";
+
 export function formatCompact(value: number | null | undefined, digits = 1): string {
   if (value == null) return NOT_MEASURED;
   return new Intl.NumberFormat("en-US", {
@@ -6,7 +12,8 @@ export function formatCompact(value: number | null | undefined, digits = 1): str
   }).format(value);
 }
 
-export function formatNumber(value: number): string {
+export function formatNumber(value: number | null | undefined): string {
+  if (value == null) return NOT_MEASURED;
   return new Intl.NumberFormat("en-US").format(Math.round(value));
 }
 
@@ -17,12 +24,6 @@ export function formatCurrency(value: number): string {
     maximumFractionDigits: value < 100 ? 2 : 0,
   }).format(value);
 }
-
-/**
- * Unmeasured metrics render as an em dash. A hard `0 ms` would be
- * indistinguishable from a genuinely instant hop.
- */
-export const NOT_MEASURED = "\u2014";
 
 export function formatMs(value: number | null | undefined): string {
   if (value == null) return NOT_MEASURED;
@@ -36,7 +37,8 @@ export function formatBytes(value: number): string {
   return `${value} B`;
 }
 
-export function formatRelative(ts: number, now = Date.now()): string {
+export function formatRelative(ts: number | null | undefined, now = Date.now()): string {
+  if (ts == null) return NOT_MEASURED;
   const diff = now - ts;
   if (diff < 5_000) return "just now";
   if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
@@ -74,7 +76,8 @@ export function formatPercent(value: number | null | undefined, digits = 1): str
   return `${value.toFixed(digits)}%`;
 }
 
-export function formatDuration(ms: number): string {
+export function formatDuration(ms: number | null | undefined): string {
+  if (ms == null) return NOT_MEASURED;
   if (ms < 1000) return `${ms}ms`;
   const s = Math.floor(ms / 1000);
   const m = Math.floor(s / 60);

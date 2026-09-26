@@ -17,7 +17,15 @@ import {
 import { useConsole } from "@/components/providers/console-provider";
 import { useMesh } from "@/lib/hooks/use-data";
 import { useCopyToClipboard } from "@/lib/hooks/use-ui";
-import { formatCompact, formatDuration, formatMs, formatNumber, formatRelative } from "@/lib/format";
+import {
+  NOT_MEASURED,
+  formatCompact,
+  formatDuration,
+  formatMs,
+  formatNumber,
+  formatPercent,
+  formatRelative,
+} from "@/lib/format";
 import { Sheet, SheetContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge, Dot, Meter } from "@/components/ui/badge";
@@ -26,6 +34,7 @@ import { AgentSkillPanel } from "@/components/dashboard/agent-skill-panel";
 import { Sparkline } from "@/components/dashboard/sparkline";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { writeJson } from "@/lib/api/write";
 
 export function AgentDrawer() {
   const { focusAgent, setFocusAgent } = useConsole();
@@ -44,13 +53,13 @@ export function AgentDrawer() {
     if (!agent || busy) return;
     setBusy("ping");
     try {
-      const response = await fetch("/api/agent-probe", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ profile: agent.id }),
+      const response = await writeJson("/api/agent-probe", {
+        json: { profile: agent.id },
       });
       if (response.status === 401) {
-        toast.error("Sign in required", { description: "reload and sign in again" });
+        // The shared session state has already flipped, so the sign-in card is
+        // on screen; this only explains what happened to the click.
+        toast.error("Sign in required", { description: "sign in to probe agents" });
         return;
       }
       const body = (await response.json()) as {
@@ -115,10 +124,10 @@ export function AgentDrawer() {
               <div className="grid grid-cols-2 gap-3">
                 <Metric label="Health" value={`${Math.round(agent.health)}%`} tone={STATUS_COLOR[agent.status]} />
                 <Metric label="Latency" value={formatMs(agent.latencyMs)} />
-                <Metric label="Load" value={`${Math.round(agent.load)}%`} />
-                <Metric label="Uptime" value={`${agent.uptimePct.toFixed(2)}%`} />
+                <Metric label="Load" value={formatPercent(agent.load, 0)} />
+                <Metric label="Uptime" value={formatPercent(agent.uptimePct, 2)} />
                 <Metric label="Queue" value={formatNumber(agent.queue)} />
-                <Metric label="Memory" value={`${agent.memoryMb} MB`} />
+                <Metric label="Memory" value={agent.memoryMb == null ? NOT_MEASURED : `${agent.memoryMb} MB`} />
               </div>
 
               <div className="rounded-2xl border border-hairline bg-surface-2/60 p-4">
@@ -137,9 +146,13 @@ export function AgentDrawer() {
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[12px]">
                     <span className="text-ink-muted">Capacity used</span>
-                    <span className="font-mono text-ink">{Math.round(agent.load)}%</span>
+                    <span className="font-mono text-ink">{formatPercent(agent.load, 0)}</span>
                   </div>
-                  <Meter value={agent.load} tone={STATUS_COLOR[agent.status]} />
+                  {agent.load == null ? (
+                    <p className="text-[11px] text-ink-subtle">Capacity is not reported by the mesh collector.</p>
+                  ) : (
+                    <Meter value={agent.load} tone={STATUS_COLOR[agent.status]} />
+                  )}
                 </div>
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[12px]">
@@ -161,7 +174,11 @@ export function AgentDrawer() {
                   <Row icon={<DatabaseIcon size={14} />} label="Provider" value={agent.provider} />
                   <Row icon={<ShareNetworkIcon size={14} />} label="A2A peers" value={`${agent.peers} connected`} />
                   <Row icon={<StackIcon size={14} />} label="Tokens" value={formatCompact(agent.tokens)} />
-                  <Row icon={<TimerIcon size={14} />} label="Avg turn" value={formatDuration(agent.latencyMs * 3)} />
+                  <Row
+                    icon={<TimerIcon size={14} />}
+                    label="Avg turn"
+                    value={formatDuration(agent.latencyMs == null ? null : agent.latencyMs * 3)}
+                  />
                 </dl>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {agent.mcp.map((tool) => (

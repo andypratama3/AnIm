@@ -50,7 +50,7 @@ function healthFor(agent: RemoteAgent): number {
   return 85;
 }
 
-function toAgent(agent: RemoteAgent, now: number): Agent {
+function toAgent(agent: RemoteAgent): Agent {
   const status = statusFor(agent);
   return {
     id: agent.id,
@@ -64,18 +64,21 @@ function toAgent(agent: RemoteAgent, now: number): Agent {
     model: agent.agentCard.name ?? "unknown",
     provider: "hermes",
     health: healthFor(agent),
-    // No latency probe is exposed by the collector; the inventory round trip is
-    // reported separately as `latencyMs` on the bridge result.
-    latencyMs: 0,
-    uptimePct: status === "online" ? 100 : 0,
-    tokens: 0,
-    queue: 0,
+    // The collector exposes no latency probe, uptime history, token counter,
+    // queue depth, load or memory figure. These stay null so the roster and the
+    // drawer render an em dash instead of a fabricated `0`/`100`. The inventory
+    // round trip is reported separately as `latencyMs` on the bridge result,
+    // which measures the SSH call and not the agent.
+    latencyMs: null,
+    uptimePct: null,
+    tokens: null,
+    queue: null,
     peers: agent.peers,
     mcp: [],
-    lastSeen: status === "offline" ? 0 : now,
+    lastSeen: null,
     throughput: [],
-    load: 0,
-    memoryMb: 0,
+    load: null,
+    memoryMb: null,
     accent: accentFor(agent.id),
     summary: agent.title ?? agent.agentCard.description ?? agent.id,
   };
@@ -119,7 +122,7 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
   }
 
   const { inventory } = remote;
-  const agents = inventory.agents.map((agent) => toAgent(agent, now));
+  const agents = inventory.agents.map((agent) => toAgent(agent));
   const online = agents.filter((agent) => agent.status === "online").length;
   const degraded = agents.filter((agent) => agent.status === "degraded").length;
   const offline = agents.filter((agent) => agent.status === "offline").length;

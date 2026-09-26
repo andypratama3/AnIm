@@ -1,46 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { LockKeyIcon } from "@phosphor-icons/react";
+import { useCallback, useState } from "react";
+import { LockKeyIcon, WarningIcon } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useSession } from "@/components/providers/session-provider";
 
 /**
- * Sign-in gate for the write-capable dashboard.
+ * Sign-in gate for the console.
  *
  * The API token is exchanged for an HttpOnly cookie by `/api/session`, so the
  * token itself never enters React state beyond the moment of submission and is
- * never present in page JavaScript. Children only render once a session exists.
+ * never present in page JavaScript.
+ *
+ * This reads the shared session state rather than fetching for itself: a 401
+ * from a task review or an agent probe has to be able to put the whole console
+ * behind this card, otherwise the shell keeps claiming to be connected while
+ * every action it offers is refused.
  */
 
-type GateProps = {
-  children: React.ReactNode;
-};
-
-export function SessionGate({ children }: GateProps) {
-  const [state, setState] = useState<"checking" | "open" | "required">("checking");
+export function SessionGate({ children }: { children: React.ReactNode }) {
+  const { state, refresh } = useSession();
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-
-  const check = useCallback(async () => {
-    try {
-      const response = await fetch("/api/session", { cache: "no-store" });
-      const body = (await response.json()) as { authRequired?: boolean };
-      // With no token configured the server does not require a session, so the
-      // dashboard stays usable in local development.
-      setState(body.authRequired ? "required" : "open");
-    } catch {
-      setState("open");
-    }
-  }, []);
-
-  useEffect(() => {
-    // Deferred so the effect body performs no synchronous setState.
-    const kick = window.setTimeout(() => void check(), 0);
-    return () => window.clearTimeout(kick);
-  }, [check]);
 
   const submit = useCallback(
     async (event: React.FormEvent) => {
@@ -55,23 +39,43 @@ export function SessionGate({ children }: GateProps) {
         });
         if (response.ok) {
           setToken("");
-          setState("open");
+          await refresh();
           return;
         }
-        const body = (await response.json().catch(() => ({}))) as { error?: string };
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          code?: string;
+        };
         setError(body.error ?? "sign in failed");
+        if (body.code === "auth_misconfigured") await refresh();
       } catch {
         setError("sign in request failed");
       } finally {
         setBusy(false);
       }
     },
-    [token],
+    [token, refresh],
   );
 
   if (state === "checking") {
+    return <div className="p-8 text-sm text-muted-foreground">Checking session…</div>;
+  }
+
+  if (state === "misconfigured") {
     return (
-      <div className="p-8 text-sm text-muted-foreground">Checking session…</div>
+      <div className="mx-auto w-full max-w-md p-6">
+        <Card className="grid gap-4">
+          <div className="flex items-center gap-2">
+            <WarningIcon size={20} weight="bold" className="text-destructive" />
+            <h2 className="text-base font-semibold">Server is not configured for writes</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            This deployment runs in production without <code>ANIM_API_TOKEN</code>, so every
+            write is refused on purpose rather than left open. Set the token on the host and
+            restart it; reading the mesh still works without it.
+          </p>
+        </Card>
+      </div>
     );
   }
 
@@ -84,9 +88,8 @@ export function SessionGate({ children }: GateProps) {
             <h2 className="text-base font-semibold">Sign in required</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            This console can start agents on the mesh, so it needs the dashboard API
-            token. It is exchanged for a secure session cookie and never stored in the
-            browser.
+            This console can start agents on the mesh, so it needs the dashboard API token.
+            It is exchanged for a secure session cookie and never stored in the browser.
           </p>
           <form onSubmit={submit} className="grid gap-3">
             <Input

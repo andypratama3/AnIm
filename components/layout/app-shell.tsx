@@ -26,7 +26,7 @@ function SidebarFrame({ onNavigate }: { onNavigate?: () => void }) {
   const score = data
     ? meshHealthScore(
         data.agents,
-        data.agents.reduce((s, a) => s + a.load, 0),
+        data.agents.reduce((s, a) => s + (a.load ?? 0), 0),
       )
     : 0;
 

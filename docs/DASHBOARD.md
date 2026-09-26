@@ -99,6 +99,43 @@ With `ANIM_API_TOKEN` unset the endpoint stays reachable, which is only
 acceptable for local development on a trusted machine. **Set it in any shared or
 public deployment.**
 
+### The write-guard contract
+
+Every mutating handler calls `checkOrigin(request)` and then `checkAuth(request)`.
+This is a contract, not a convention: `tests/write-route-guards.test.mjs` reads
+the routes as source and fails if a `POST`/`PATCH`/`PUT`/`DELETE` handler is
+added without both. `/api/board` was the gap that motivated it — it accepted a
+create, a move and a delete from anyone who could reach the port while its four
+sibling routes were careful. An exemption is allowed but has to state its
+reason, and the test fails if the handler it names no longer exists.
+
+`checkOrigin` compares the `Origin` header against the request host and refuses a
+mismatch. A request with no `Origin` at all is allowed, because `curl` and CI
+do not send one and the token is the credential in that case. `SameSite=Strict`
+already blocks the ordinary cross-site POST; this is the second layer.
+
+**Production fails closed.** With no `ANIM_API_TOKEN`, `checkAuth` returns `503`
+with `code: "auth_misconfigured"` instead of treating the endpoint as open. The
+code matters because the rate limiter and the concurrency ceiling also return
+`503`, and a client that matched on the status alone would tell the operator to
+sign in again to a deployment that has no token to sign in with. `SessionGate`
+reads the code and says what is actually wrong.
+
+### Review attribution is declared, not proven
+
+The review queue records who acted on a transition, and the name arrives in the
+request body. `transition()` validates it against `agents/registry.json` so an
+invented name cannot be written into an audit log, and stores it with
+`attribution: "declared"`.
+
+This is the honest limit of the design rather than a bug to be papered over. The
+console holds **one shared token**, so the server cannot tell which person typed
+a request and cannot enforce that a *second* person reviewed anything. The
+acceptance policy in the registry is therefore checked against a declared name.
+The UI says so in the toast rather than claiming a peer review was confirmed.
+Enforcing real two-person review needs per-user identity, which is a larger
+change than a guard function.
+
 ## Realtime behaviour
 
 `LiveConstellationPanel` polls `/api/mesh-live` every 15s and refetches when the
@@ -136,6 +173,26 @@ to catch.
 Note that a port being closed does not mean the profile is unusable: the
 `hermes -p <profile>` CLI can address a profile whose gateway is not listening,
 so "19 stopped" describes the gateways, not the profiles.
+
+### Local development binds loopback too
+
+`next dev` and `next start` default to `0.0.0.0`, which publishes the dashboard
+on every interface the machine has. On a laptop that is a real exposure, not a
+theoretical one: the page holds an SSH path to the production host and can
+dispatch work to 26 agent profiles, so anything on the same Wi-Fi would be able
+to reach it.
+
+Both scripts therefore pin `-H 127.0.0.1`, and `tests/local-bind.test.mjs` fails
+the build if a flag is dropped or a new `next dev`/`next start` script appears
+without one. To reach it from another machine on purpose, tunnel over SSH
+instead of rebinding:
+
+```
+ssh -L 3000:127.0.0.1:3000 root@72.61.141.91
+```
+
+Server-side decisions that were deliberately not acted on are written up in
+`docs/SERVER-DEFERRED.md`.
 
 
 ## Layout invariants

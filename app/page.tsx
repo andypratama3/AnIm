@@ -124,7 +124,9 @@ export default function OverviewPage() {
         />
       </section>
 
-      <section className="grid grid-cols-1 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-4">
+        <ThroughputChart series={series} accent="var(--brand)" height={188} title="Mesh throughput" />
+
         <Card tone="plate" className="relative overflow-hidden p-5 sm:p-6">
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -147,12 +149,9 @@ export default function OverviewPage() {
             </div>
           </div>
         </Card>
-
-        <div className="space-y-4">
-          <ThroughputChart series={series} accent="var(--brand)" height={188} title="Mesh throughput" />
-          <LoadHeatmap cells={data.heat} agents={agents.map((agent) => agent.id)} />
-        </div>
       </section>
+
+      <LoadHeatmap cells={data.heat} agents={agents.map((agent) => agent.id)} />
 
       <section className="grid grid-cols-1 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <LiveFeed limit={9} />

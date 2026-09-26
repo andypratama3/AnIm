@@ -19,10 +19,15 @@ The agent mesh lives on a remote host. **Do not run `npm run build`, `next build
 "pick up a change".** All builds happen locally on the Mac, in this repo.
 
 - Build/test/verify locally only: `npm run verify` in `/Users/andypratama3/Development/AnIm`.
+- `npm run dev` / `npm run start` pin `-H 127.0.0.1`. Next defaults to
+  `0.0.0.0`, which would publish the dashboard to the local network; the page
+  can reach the production host over SSH, so keep it on loopback and tunnel
+  (`ssh -L 3000:127.0.0.1:3000 …`) if you need it from elsewhere.
 - The server is treated as **runtime + content only**. Writing agent markdown
   (SOUL.md and friends) is fine; building or restarting services is not.
 - If a change appears to need a server-side build or a gateway restart, stop and
-  ask the user first. Do not "just do it".
+  ask the user first. Do not "just do it". Findings that need a server decision
+  go in `docs/SERVER-DEFERRED.md` instead of being acted on.
 
 ## 2. Hard rule: no secrets, ever
 

@@ -6,9 +6,10 @@ import { useConsole } from "@/components/providers/console-provider";
 import { MESH_LINKS } from "@/lib/data/profiles";
 import { STATUS_COLOR, AgentGlyph } from "@/components/dashboard/agent-glyph";
 import { Badge } from "@/components/ui/badge";
-import { formatMs } from "@/lib/format";
+import { formatMs, formatPercent } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { hottestAgent, meanLatency } from "@/lib/data/mesh-metrics";
 
 const SIZE = 620;
 const CENTER = SIZE / 2;
@@ -196,9 +197,12 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
 }
 
 export function MeshLegend({ agents }: { agents: Agent[] }) {
-  const avgLatency =
-    agents.reduce((sum, agent) => sum + agent.latencyMs, 0) / Math.max(1, agents.length);
-  const busiest = [...agents].sort((a, b) => b.load - a.load)[0];
+  // A collector that never reports load yields `null` for every agent, and
+  // sorting those alone would still hand back the first profile. That badge
+  // would read "hottest: frontend · —" and name a peak nobody measured, so the
+  // roll-ups live in `mesh-metrics.ts` where they are unit-tested.
+  const avgLatency = meanLatency(agents);
+  const busiest = hottestAgent(agents);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -208,7 +212,7 @@ export function MeshLegend({ agents }: { agents: Agent[] }) {
       </Badge>
       {busiest ? (
         <Badge tone="warn">
-          hottest: {busiest.id} · {Math.round(busiest.load)}%
+          hottest: {busiest.id} · {formatPercent(busiest.load, 0)}
         </Badge>
       ) : null}
     </div>

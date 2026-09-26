@@ -40,7 +40,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const counts: Record<string, number> = {
     "/agents": data?.agents.length ?? 0,
     "/kanban":
-      data?.agents.reduce((sum, agent) => sum + agent.queue, 0) ??
+      data?.agents.reduce((sum, agent) => sum + (agent.queue ?? 0), 0) ??
       data?.totals.tasks ??
       0,
   };

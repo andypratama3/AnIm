@@ -352,7 +352,7 @@ export default function AgentsPage() {
                 </span>
                 <HeatmapInline cells={data?.heat ?? []} agent={agent.id} />
                 <span className="w-9 shrink-0 text-right font-mono text-[11px] text-ink">
-                  {Math.round(agent.load)}%
+                  {formatPercent(agent.load, 0)}
                 </span>
               </div>
             ))}

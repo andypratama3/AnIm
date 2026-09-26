@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { readRegistry } from "@/lib/data/registry";
 
 /**
  * File-backed store for the owner review queue.
@@ -21,6 +22,15 @@ export const STATES = [
   "FAILED",
 ] as const;
 
+/**
+ * Marks a history entry whose actor name was asserted by the client.
+ *
+ * The dashboard holds one shared token, so the server cannot tell who typed a
+ * request. Recording the provenance in the row keeps a later reader from
+ * mistaking a self-declared name for a verified second reviewer.
+ */
+export const ACTOR_ATTRIBUTION = "declared" as const;
+
 export type State = (typeof STATES)[number];
 
 /** Allowed forward/backward moves. VERIFIED is terminal. */
@@ -41,7 +51,17 @@ export type Task = {
   reviewer: string;
   state: State;
   evidence: string[];
-  history: { state: State; at: number; by: string; note?: string }[];
+  history: {
+    state: State;
+    at: number;
+    by: string;
+    /**
+     * Absent on seeded rows; present on every live transition to say the name
+     * was asserted by the client rather than authenticated by the server.
+     */
+    attribution?: typeof ACTOR_ATTRIBUTION;
+    note?: string;
+  }[];
   updatedAt: number;
   createdAt: number;
 };
@@ -108,7 +128,10 @@ function validTask(value: unknown): value is Task {
 /** Read the store, tolerating a missing or corrupt file rather than crashing. */
 export async function readStore(): Promise<StoreShape> {
   try {
-    const raw = await readFile(STORE_PATH, "utf8");
+    // turbopackIgnore: STORE_PATH comes from ANIM_TASK_STORE, so the bundler
+    // cannot scope it to a subfolder. Opting out keeps the trace out of the
+    // server output.
+    const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as StoreShape;
     if (!Array.isArray(parsed?.tasks)) return seed();
     // Drop anything malformed instead of trusting the file blindly.
@@ -131,9 +154,47 @@ export type TransitionResult =
   | { ok: false; status: number; error: string };
 
 /**
+ * Who the server is willing to accept as the acting agent.
+ *
+ * The dashboard authenticates with one shared token, so the server genuinely
+ * cannot tell which person typed a request. What it *can* do is refuse to write
+ * an unknown string into an audit log: `actor` used to be copied straight from
+ * the request body, so any caller could attribute a review to a name that does
+ * not exist.
+ *
+ * Names still come from the client, so the history records them as declared
+ * rather than proven. `attribution` says so in the stored record itself, because
+ * an audit log that looks verified but is not is the failure this is meant to
+ * prevent.
+ */
+export function isKnownActor(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  const name = value.trim();
+  if (!isKnownAgentName(name)) return false;
+  return true;
+}
+
+function isKnownAgentName(name: string): boolean {
+  try {
+    const known = new Set<string>();
+    for (const agent of readRegistry().agents) {
+      if (agent.id) known.add(agent.id);
+      if (agent.profile) known.add(agent.profile);
+    }
+    return known.has(name);
+  } catch {
+    // A missing or unreadable registry must not make every transition succeed.
+    return false;
+  }
+}
+
+/**
  * Apply a state change, enforcing the acceptance policy from
  * `agents/registry.json`: an item may only reach VERIFIED when a second agent
  * has reviewed it, and a reviewer may never be the owner.
+ *
+ * `actor` is a declared name, validated against the registry but not
+ * authenticated — see `ACTOR_ATTRIBUTION`.
  */
 export async function transition(
   id: string,
@@ -144,6 +205,15 @@ export async function transition(
   if (!isState(next)) {
     return { ok: false, status: 400, error: "unknown state" };
   }
+
+  if (!isKnownActor(actor)) {
+    return {
+      ok: false,
+      status: 400,
+      error: "actor must be a known agent id or profile from the registry",
+    };
+  }
+  const declaredBy = actor.trim();
 
   const store = await readStore();
   const index = store.tasks.findIndex((task) => task.id === id);
@@ -171,7 +241,10 @@ export async function transition(
   // was unreachable: the table already refuses every non-PEER_REVIEWED move to
   // VERIFIED, so the actionable message could never be shown.
   if (next === "VERIFIED") {
-    if (actor === task.owner) {
+    // A policy check on the declared name. It is not authentication: the shared
+    // session token cannot prove a second person reviewed anything, which is why
+    // the history records the attribution as declared.
+    if (declaredBy === task.owner) {
       return {
         ok: false,
         status: 403,
@@ -200,7 +273,16 @@ export async function transition(
     ...task,
     state: next,
     updatedAt: at,
-    history: [...task.history, { state: next, at, by: actor, ...(note ? { note } : {}) }],
+    history: [
+      ...task.history,
+      {
+        state: next,
+        at,
+        by: declaredBy,
+        attribution: ACTOR_ATTRIBUTION,
+        ...(note ? { note } : {}),
+      },
+    ],
   };
   store.tasks[index] = updated;
   await writeStore(store);

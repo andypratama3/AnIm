@@ -18,16 +18,24 @@ export type Agent = {
   model: string;
   provider: string;
   health: number;
-  latencyMs: number;
-  uptimePct: number;
-  tokens: number;
-  queue: number;
+  /**
+   * The mesh collector reports gateway state, A2A reachability and document
+   * presence, and nothing else. These fields are therefore `null` on the live
+   * path rather than `0`/`100`: a hard `0 ms` or `100.00%` is
+   * indistinguishable from a real measurement, and the point of this dashboard
+   * is that an unmeasured metric is visibly unmeasured. `health` is derived from
+   * reported state, so it stays a number.
+   */
+  latencyMs: number | null;
+  uptimePct: number | null;
+  tokens: number | null;
+  queue: number | null;
   peers: number;
   mcp: string[];
-  lastSeen: number;
+  lastSeen: number | null;
   throughput: number[];
-  load: number;
-  memoryMb: number;
+  load: number | null;
+  memoryMb: number | null;
   accent: string;
   summary: string;
 };

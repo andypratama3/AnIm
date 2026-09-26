@@ -109,7 +109,7 @@ function buildSeries(tick: number, now: number, agents: Agent[]): Series {
   const errors: number[] = [];
   const tokens: number[] = [];
 
-  const baseLoad = agents.reduce((sum, a) => sum + a.load, 0) / agents.length;
+  const baseLoad = agents.reduce((sum, a) => sum + (a.load ?? 0), 0) / agents.length;
 
   for (let i = points - 1; i >= 0; i--) {
     const t = tick - i * 0.55;
@@ -136,7 +136,7 @@ function buildHeat(tick: number, agents: Agent[]): HeatCell[] {
     const base = baseById.get(agent.id) ?? 50;
     for (let hour = 0; hour < 12; hour++) {
       const t = tick - (11 - hour) * 2.4;
-      const value = clamp(base * 0.5 + wave(t, hash(agent.id) + hour, 0.28, ai) * 26 + agent.load * 0.42, 4, 100);
+      const value = clamp(base * 0.5 + wave(t, hash(agent.id) + hour, 0.28, ai) * 26 + (agent.load ?? 0) * 0.42, 4, 100);
       cells.push({ agent: agent.id, hour, load: Math.round(value) });
     }
   });
@@ -299,7 +299,10 @@ export function createSnapshot(
   const busy = agents.filter((a) => a.status === "busy").length;
   const degraded = agents.filter((a) => a.status === "degraded").length;
   const offline = agents.filter((a) => a.status === "offline").length;
-  const latencies = agents.map((a) => a.latencyMs).sort((a, b) => a - b);
+  const latencies = agents
+    .map((a) => a.latencyMs)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b);
   const errorRate = series.errors.reduce((sum, v) => sum + v, 0) / series.errors.length;
 
   return {
@@ -314,10 +317,13 @@ export function createSnapshot(
       busy,
       degraded,
       offline,
-      tasks: agents.reduce((sum, a) => sum + a.queue, 0),
-      tokens: agents.reduce((sum, a) => sum + a.tokens, 0),
-      avgLatency: Math.round(latencies.reduce((sum, v) => sum + v, 0) / latencies.length),
-      p95Latency: latencies[Math.floor(latencies.length * 0.95)] ?? 0,
+      tasks: agents.reduce((sum, a) => sum + (a.queue ?? 0), 0),
+      tokens: agents.reduce((sum, a) => sum + (a.tokens ?? 0), 0),
+      avgLatency:
+        latencies.length > 0
+          ? Math.round(latencies.reduce((sum, v) => sum + v, 0) / latencies.length)
+          : null,
+      p95Latency: latencies[Math.floor(latencies.length * 0.95)] ?? null,
       successRate: Number(clamp(100 - errorRate * 3.1, 82, 99.9).toFixed(2)),
       meshLinks: PROFILES.length * (PROFILES.length - 1) / 2,
     },

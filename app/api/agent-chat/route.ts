@@ -1,6 +1,6 @@
 import { chatWithProfile, isChatProfile, CHATTABLE_PROFILES } from "@/lib/data/agent-chat";
 import {
-  appendExchange,
+  appendMessage,
   clearTranscript,
   newMessage,
   readTranscript,
@@ -8,6 +8,7 @@ import {
 import {
   acquireSlot,
   checkAuth,
+  checkOrigin,
   checkRateLimit,
   guardHeaders,
   pruneRateLimits,
@@ -21,7 +22,10 @@ export async function GET(request: Request) {
   // Transcripts hold real agent output, so the same token applies as for sending.
   const auth = checkAuth(request);
   if (!auth.ok) {
-    return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
+    return Response.json(
+      { error: auth.error, code: auth.code },
+      { status: auth.status, headers: guardHeaders() },
+    );
   }
 
   const requested = new URL(request.url).searchParams.get("profile");
@@ -43,9 +47,20 @@ export async function GET(request: Request) {
 
 /** Drop a profile's history. The operator asked for it, so it is not a loss. */
 export async function DELETE(request: Request) {
+  const origin = checkOrigin(request);
+  if (!origin.ok) {
+    return Response.json(
+      { error: origin.error },
+      { status: origin.status, headers: guardHeaders() },
+    );
+  }
+
   const auth = checkAuth(request);
   if (!auth.ok) {
-    return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
+    return Response.json(
+      { error: auth.error, code: auth.code },
+      { status: auth.status, headers: guardHeaders() },
+    );
   }
 
   const requested = new URL(request.url).searchParams.get("profile");
@@ -61,9 +76,20 @@ export async function DELETE(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const origin = checkOrigin(request);
+  if (!origin.ok) {
+    return Response.json(
+      { error: origin.error },
+      { status: origin.status, headers: guardHeaders() },
+    );
+  }
+
   const auth = checkAuth(request);
   if (!auth.ok) {
-    return Response.json({ error: auth.error }, { status: auth.status, headers: guardHeaders() });
+    return Response.json(
+      { error: auth.error, code: auth.code },
+      { status: auth.status, headers: guardHeaders() },
+    );
   }
 
   const limit = checkRateLimit(auth.client);
@@ -101,23 +127,35 @@ export async function POST(request: Request) {
     );
   }
 
-  // The question is recorded before the agent is contacted. If the process dies
-  // or the operator closes the tab, the transcript still shows what was asked.
+  // The question is recorded *before* the agent is contacted. The agent call
+  // can hold for minutes and the process can die mid-flight, so writing it
+  // first is what makes "what was asked" survive. The reply is appended
+  // separately when it lands, which means a transcript may legitimately end on
+  // an unanswered question, and that gap is real information.
   const outgoing = newMessage("you", profile, prompt.trim());
+  try {
+    await appendMessage(profile, outgoing);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "unknown failure";
+    return Response.json(
+      { ok: false, profile, error: `could not record the question: ${detail}` },
+      { status: 500, headers: guardHeaders() },
+    );
+  }
 
   try {
     const result = await chatWithProfile(profile, prompt);
 
-    const transcript = await appendExchange({
+    await appendMessage(
       profile,
-      outgoing,
-      incoming: newMessage(
+      newMessage(
         "agent",
         profile,
         result.ok ? result.reply : `Delivery failed: ${result.error}`,
         { elapsedMs: result.elapsedMs, failed: !result.ok },
       ),
-    });
+    );
+    const transcript = await readTranscript(profile);
 
     if (!result.ok) {
       return Response.json(
@@ -127,13 +165,19 @@ export async function POST(request: Request) {
     }
     return Response.json({ ...result, transcript }, { headers: guardHeaders() });
   } catch (err) {
-    // A transport-level throw must still leave the question on record.
+    // A transport-level throw must still leave the failure on record, next to
+    // the question that caused it.
     const detail = err instanceof Error ? err.message : "unknown failure";
-    const transcript = await appendExchange({
-      profile,
-      outgoing,
-      incoming: newMessage("agent", profile, `Transport error: ${detail}`, { failed: true }),
-    });
+    try {
+      await appendMessage(
+        profile,
+        newMessage("agent", profile, `Transport error: ${detail}`, { failed: true }),
+      );
+    } catch {
+      // The question is already durable, so losing the error note degrades the
+      // record rather than losing it.
+    }
+    const transcript = await readTranscript(profile);
     return Response.json(
       { ok: false, profile, error: detail, transcript },
       { status: 502, headers: guardHeaders() },
