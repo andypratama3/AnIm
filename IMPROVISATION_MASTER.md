@@ -19,7 +19,7 @@ agent: all
 ## Key Files (read-only audit verified)
 - Configs: `~/.hermes/config.yaml` + `profiles/*/config.yaml` (7 OK)
 - SOUL.md: `~/.hermes/SOUL.md` + `profiles/*/SOUL.md` (frontend has Obsidian ref; others missing)
-- .env: 7 profiles have `OPENROUTER_API_KEY=sk-or-v1-e82...` (free tier, exhausted 402, 41m left)
+- .env: 7 profiles have `OPENROUTER_API_KEY=sk-or-v1-*** (redacted)` (free tier, exhausted 402, 41m left)
 - A2A: all enabled, mesh full, ports LISTEN
 - MCP: `mcp_servers.obsidian` in all 7 configs (vault=/home/bor/Documents/Obsidian/Hermes-Agent)
 - Vault: `/home/bor/Documents/Obsidian/Hermes-Agent` (7 dirs + README + Template)

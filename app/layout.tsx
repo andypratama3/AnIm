@@ -1,29 +1,71 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-export const metadata: Metadata = { title: "Hermes Mesh Monitor", description: "Real-time multi-agent monitoring" };
+import { ThemeProvider } from "@/components/providers/theme-provider";
+import { ConsoleProvider } from "@/components/providers/console-provider";
+import { SessionProvider } from "@/components/providers/session-provider";
+import { SessionGate } from "@/components/dashboard/session-gate";
+import { AppShell } from "@/components/layout/app-shell";
+import { BRAND } from "@/lib/brand";
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-geist",
+  display: "swap",
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  variable: "--font-geist-mono",
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: {
+    default: `Overview · ${BRAND.name}`,
+    template: `%s · ${BRAND.name}`,
+  },
+  description: BRAND.description,
+  applicationName: BRAND.name,
+  keywords: ["agent mesh", "orchestration", "A2A", "observability", "AnIm", "multi-agent"],
+  authors: [{ name: "Andy Pratama" }],
+  openGraph: {
+    title: `${BRAND.name} · ${BRAND.expansion}`,
+    description: BRAND.description,
+    type: "website",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafc" },
+    { media: "(prefers-color-scheme: dark)", color: "#14141a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className="min-h-screen bg-neutral-950 text-neutral-50">
-        <div className="flex h-screen overflow-hidden">
-          <aside className="w-64 border-r bg-neutral-900 flex flex-col shrink-0">
-            <div className="h-14 flex items-center px-4 font-bold">Hermes Mesh</div>
-            <nav className="flex-1 p-3 space-y-1 text-sm">
-              {["/","/agents","/kanban","/activity","/analytics","/notes","/settings"].map((h)=>{
-                const label=h==="/"?"Overview":h.slice(1).replace("/"," ").replace(/\b\w/g,c=>c.toUpperCase());
-                return <a key={h} href={h} className="block px-3 py-2 rounded hover:bg-neutral-800">{label}</a>;
-              })}
-            </nav>
-            <div className="p-3 text-xs text-neutral-500">v1.0 · 7 profiles</div>
-          </aside>
-          <div className="flex-1 flex flex-col overflow-hidden">
-            <header className="h-14 border-b bg-neutral-900 flex items-center justify-between px-6">
-              <span className="text-sm font-medium">Multi-Agent Dashboard</span>
-              <span className="text-xs bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">Gateway Online</span>
-            </header>
-            <main className="flex-1 overflow-y-auto p-6">{children}</main>
-          </div>
-        </div>
+    <html lang="en" suppressHydrationWarning className={`${geist.variable} ${geistMono.variable}`}>
+      <body className="antialiased">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+          themes={["dark", "light"]}
+        >
+          <ConsoleProvider>
+            <SessionProvider>
+              {/* Global, not per-page: a 401 from a task review or an agent probe
+                  has to be able to put the whole console behind the sign-in card. */}
+              <SessionGate>
+                <AppShell>{children}</AppShell>
+              </SessionGate>
+            </SessionProvider>
+          </ConsoleProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
