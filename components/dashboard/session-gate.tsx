@@ -62,19 +62,33 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
   }
 
   if (state === "misconfigured") {
+    // The console still renders. Reads are open by design — `/api/mesh` and
+    // `/api/mesh-live` carry no secrets — so replacing the app with a card
+    // would hide the one thing an operator can still usefully look at, while
+    // telling them to go and set a token they may not be allowed to set. The
+    // server already refuses the writes; this says so where the work happens
+    // rather than walling the page off.
     return (
-      <div className="mx-auto w-full max-w-md p-6">
-        <Card className="grid gap-4">
-          <div className="flex items-center gap-2">
-            <WarningIcon size={20} weight="bold" className="text-destructive" />
-            <h2 className="text-base font-semibold">Server is not configured for writes</h2>
+      <div className="min-h-[100dvh]">
+        <div
+          role="status"
+          className="border-b border-hairline bg-surface-2/70 px-4 py-2.5 sm:px-6"
+        >
+          <div className="mx-auto flex w-full max-w-[110rem] items-start gap-2.5">
+            <WarningIcon
+              size={17}
+              weight="bold"
+              className="mt-px shrink-0 text-destructive"
+            />
+            <p className="min-w-0 text-[13px] leading-snug text-muted-foreground">
+              <span className="font-medium text-foreground">Writes are disabled.</span> This
+              deployment runs in production without <code>ANIM_API_TOKEN</code>, so every write is
+              refused on purpose rather than left open. Reading the mesh still works. Set the token
+              on the host to re-enable it.
+            </p>
           </div>
-          <p className="text-sm text-muted-foreground">
-            This deployment runs in production without <code>ANIM_API_TOKEN</code>, so every
-            write is refused on purpose rather than left open. Set the token on the host and
-            restart it; reading the mesh still works without it.
-          </p>
-        </Card>
+        </div>
+        {children}
       </div>
     );
   }
