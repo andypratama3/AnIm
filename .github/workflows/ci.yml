@@ -37,6 +37,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Test
+        # Runs the TypeScript sources directly through Node's own type
+        # stripping, so the suite needs no test-runner dependency.
+        run: npm test
+
       - name: Build
         run: npm run build
 

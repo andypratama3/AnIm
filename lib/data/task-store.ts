@@ -160,16 +160,17 @@ export async function transition(
     };
   }
 
-  if (!TRANSITIONS[task.state].includes(next)) {
-    return {
-      ok: false,
-      status: 409,
-      error: `cannot move from ${task.state} to ${next}`,
-    };
+  // Terminal is checked first: a task sitting in VERIFIED has no exit, and saying
+  // "requires a peer review" for an attempt to re-verify would be misleading.
+  if (task.state === "VERIFIED") {
+    return { ok: false, status: 409, error: "VERIFIED is terminal" };
   }
 
+  // The acceptance policy, checked before the transition table so the caller is
+  // told what is actually missing. Previously this sat below the table, where it
+  // was unreachable: the table already refuses every non-PEER_REVIEWED move to
+  // VERIFIED, so the actionable message could never be shown.
   if (next === "VERIFIED") {
-    // The policy requires independent review before the owner sees the work.
     if (actor === task.owner) {
       return {
         ok: false,
@@ -184,6 +185,14 @@ export async function transition(
         error: "VERIFIED requires a peer review first",
       };
     }
+  }
+
+  if (!TRANSITIONS[task.state].includes(next)) {
+    return {
+      ok: false,
+      status: 409,
+      error: `cannot move from ${task.state} to ${next}`,
+    };
   }
 
   const at = Date.now();
