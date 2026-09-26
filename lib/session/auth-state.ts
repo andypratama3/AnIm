@@ -15,7 +15,12 @@ export type SessionState =
   /** A token is configured and this browser has no session. */
   | "required"
   /** Production without `ANIM_API_TOKEN`: writes are refused by design. */
-  | "misconfigured";
+  | "misconfigured"
+  /**
+   * `/api/session` could not be reached, so whether a session is required is
+   * unknown. Reads still render; writes are withheld.
+   */
+  | "unreachable";
 
 type Escalate = (state: SessionState) => void;
 
@@ -48,7 +53,15 @@ export function reportAuthFailure(status: number, misconfigured = false): void {
   if (next) escalate?.(next);
 }
 
-/** True when the console can perform writes right now. */
+/**
+ * True when the console can perform writes right now.
+ *
+ * `unreachable` is excluded on purpose. The server is the authority on whether
+ * a write is accepted, so a session probe that never came back has already lost
+ * the argument — but claiming `true` here is what told the operator every
+ * control works, and then each one failed. `misconfigured` and `unreachable` are
+ * both "no", for the same reason and with the same remedy.
+ */
 export function canWrite(state: SessionState): boolean {
   return state === "open";
 }

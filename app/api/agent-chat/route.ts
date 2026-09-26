@@ -1,4 +1,5 @@
 import { chatWithProfile, isChatProfile, CHATTABLE_PROFILES } from "@/lib/data/agent-chat";
+import { formatHistoryPrompt } from "@/lib/data/chat-history";
 import {
   appendMessage,
   clearTranscript,
@@ -132,6 +133,9 @@ export async function POST(request: Request) {
   // first is what makes "what was asked" survive. The reply is appended
   // separately when it lands, which means a transcript may legitimately end on
   // an unanswered question, and that gap is real information.
+  // Read before recording the question, so the history holds strictly prior
+  // turns and the question is not counted twice.
+  const prior = await readTranscript(profile);
   const outgoing = newMessage("you", profile, prompt.trim());
   try {
     await appendMessage(profile, outgoing);
@@ -144,7 +148,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await chatWithProfile(profile, prompt);
+    // The agent gets the earlier turns as context, assembled from the server's
+    // own transcript rather than from anything the client sent.
+    const result = await chatWithProfile(
+      profile,
+      formatHistoryPrompt(prior.messages, prompt),
+    );
 
     await appendMessage(
       profile,

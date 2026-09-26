@@ -1,11 +1,9 @@
 import { MCP_TOOLS, MODEL_DEFAULT, PROFILES, PROVIDER, type ProfileDef } from "@/lib/data/profiles";
 import type {
-  ActivityEvent,
   Agent,
   AgentStatus,
-  EventKind,
-  EventLevel,
   HeatCell,
+  MeshLink,
   MeshSnapshot,
   Series,
 } from "@/lib/types";
@@ -143,152 +141,18 @@ function buildHeat(tick: number, agents: Agent[]): HeatCell[] {
   return cells;
 }
 
-const EVENT_TEMPLATES: Array<{
-  kind: EventKind;
-  level: EventLevel;
-  agent: string;
-  title: string;
-  detail: string;
-}> = [
-  {
-    kind: "a2a",
-    level: "success",
-    agent: "default",
-    title: "Delegated brief to principal-engineer",
-    detail: "a2a_call · scope locked, budget ceiling 42k tokens",
-  },
-  {
-    kind: "task",
-    level: "info",
-    agent: "frontend",
-    title: "Picked up interface parity audit",
-    detail: "queue drained from 5 → 3 items",
-  },
-  {
-    kind: "llm",
-    level: "info",
-    agent: "social-media",
-    title: "Drafted 6 channel variants",
-    detail: "inkling:free · 3.1k tokens · scored 8.4 avg",
-  },
-  {
-    kind: "gateway",
-    level: "success",
-    agent: "backend",
-    title: "Gateway restart completed",
-    detail: "port 9906 · pid 44182 · 1.4s downtime",
-  },
-  {
-    kind: "vault",
-    level: "info",
-    agent: "management-research",
-    title: "Wrote note to Research/competitor-scan.md",
-    detail: "notes_write · 1.8 KB · 4 links resolved",
-  },
-  {
-    kind: "error",
-    level: "error",
-    agent: "backend",
-    title: "A2A call to backend timed out",
-    detail: "peer did not answer within 120s · retried once",
-  },
-  {
-    kind: "security",
-    level: "warn",
-    agent: "default",
-    title: "OpenRouter quota below threshold",
-    detail: "free tier · 41 requests remaining this window",
-  },
-  {
-    kind: "deploy",
-    level: "success",
-    agent: "principal-engineer",
-    title: "Rolled out mesh config revision r21",
-    detail: "7 profiles reloaded · 0 drift detected",
-  },
-  {
-    kind: "task",
-    level: "success",
-    agent: "ceo-bor",
-    title: "Stakeholder brief acknowledged",
-    detail: "3 approvals collected · 1 pending",
-  },
-  {
-    kind: "llm",
-    level: "warn",
-    agent: "research",
-    title: "Free-tier model returned 402",
-    detail: "thinkingmachines/inkling:free · fallback queued",
-  },
-  {
-    kind: "a2a",
-    level: "info",
-    agent: "ceo-bor",
-    title: "Fan-out to 4 peers",
-    detail: "social-media, frontend, backend, research",
-  },
-  {
-    kind: "vault",
-    level: "success",
-    agent: "frontend",
-    title: "Linked spec note into project context",
-    detail: "vault_analysis · 12 references indexed",
-  },
-  {
-    kind: "gateway",
-    level: "warn",
-    agent: "default",
-    title: "Discord rate limit reached",
-    detail: "backoff engaged · retry in 42s",
-  },
-  {
-    kind: "task",
-    level: "info",
-    agent: "backend",
-    title: "Rotated gateway token",
-    detail: "peer token refreshed for 2 peers",
-  },
-  {
-    kind: "deploy",
-    level: "info",
-    agent: "frontend",
-    title: "Shipped mesh topology view",
-    detail: "bundle 214 KB · 0 lighthouse regressions",
-  },
-];
 
-export function createEvents(now: number, count = 90): ActivityEvent[] {
-  const events: ActivityEvent[] = [];
-  let cursor = now - 12_000;
 
-  for (let i = 0; i < count; i++) {
-    const rng = mulberry32(i * 2654435761 + 17);
-    const template = EVENT_TEMPLATES[Math.floor(rng() * EVENT_TEMPLATES.length)];
-    const gap = 18_000 + rng() * 210_000;
-    const agentId =
-      template.agent === "research" ? "management-research" : template.agent;
-    cursor -= gap;
-    const durationMs = Math.round(320 + rng() * 8_400);
-    const tokens = rng() > 0.45 ? Math.round(400 + rng() * 7_200) : undefined;
-    events.push({
-      id: `evt-${i}-${Math.round(cursor)}`,
-      ts: Math.round(cursor),
-      agent: agentId,
-      kind: template.kind,
-      level: template.level,
-      title: template.title,
-      detail: template.detail,
-      durationMs,
-      tokens,
-    });
-  }
-
-  return events.sort((a, b) => b.ts - a.ts);
-}
-
+/**
+ * `hierarchy` is passed in rather than read here: this module is imported by a
+ * client component, so it must not reach for `node:fs`. `source.ts` supplies the
+ * registry's reporting lines, and an empty array means "no hierarchy known",
+ * which the graph states rather than papering over with a complete graph.
+ */
 export function createSnapshot(
   now: number = Date.now(),
   source: MeshSnapshot["source"] = "simulated",
+  hierarchy: MeshLink[] = [],
 ): MeshSnapshot {
   const tick = Math.floor(now / 4_000);
   const agents = PROFILES.map((profile) => buildAgent(profile, tick, now));
@@ -311,7 +175,7 @@ export function createSnapshot(
     agents,
     series,
     heat,
-    events: createEvents(now),
+    hierarchy,
     totals: {
       online,
       busy,

@@ -17,15 +17,7 @@ import {
 import { useConsole } from "@/components/providers/console-provider";
 import { useMesh } from "@/lib/hooks/use-data";
 import { useCopyToClipboard } from "@/lib/hooks/use-ui";
-import {
-  NOT_MEASURED,
-  formatCompact,
-  formatDuration,
-  formatMs,
-  formatNumber,
-  formatPercent,
-  formatRelative,
-} from "@/lib/format";
+import { NOT_MEASURED, formatCompact, formatDuration, formatMs, formatNumber, formatPercent, formatRelative, formatPort, describePort } from "@/lib/format";
 import { Sheet, SheetContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge, Dot, Meter } from "@/components/ui/badge";
@@ -72,13 +64,13 @@ export function AgentDrawer() {
       if (body.tcpConnected) {
         const rtt = body.a2aMs ?? body.connectMs;
         toast.success(`${agent.id} answered`, {
-          description: `${body.a2aStatus ?? "no status"} on :${agent.port}${
+          description: `${body.a2aStatus ?? "no status"} on ${describePort(agent.port)}${
             rtt != null ? ` · ${rtt}ms` : ""
           }`,
         });
       } else {
         toast.error(`${agent.id} unreachable`, {
-          description: `no TCP accept on :${agent.port}${body.error ? ` (${body.error})` : ""}`,
+          description: `no TCP accept on ${describePort(agent.port)}${body.error ? ` (${body.error})` : ""}`,
         });
       }
     } catch {
@@ -104,7 +96,7 @@ export function AgentDrawer() {
                   </Badge>
                 </div>
                 <p className="mt-0.5 text-[12px] text-ink-subtle">
-                  {agent.role} · <span className="font-mono">:{agent.port}</span> ·{" "}
+                  {agent.role} · <span className="font-mono">{formatPort(agent.port)}</span> ·{" "}
                   {formatRelative(agent.lastSeen, data?.generatedAt)}
                 </p>
               </div>
@@ -208,7 +200,7 @@ export function AgentDrawer() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  void copy(`${agent.id} · :${agent.port} · ${agent.model}`);
+                  void copy(`${agent.id} · ${describePort(agent.port)} · ${agent.model}`);
                   toast.success("Peer identity copied");
                 }}
               >

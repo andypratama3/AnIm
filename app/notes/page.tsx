@@ -57,8 +57,8 @@ export default function NotesPage() {
     <div className="space-y-6">
       <PageHeader
         eyebrow="Workflow"
-        title="Vault"
-        description="The shared knowledge layer the mesh reads and writes. Notes here are the same markdown files the agents mount."
+        title="Notes"
+        description="A working notes surface for this dashboard. These notes live in the dashboard process only: no agent reads them, nothing is written to disk, and they are gone on restart."
         meta={
           <>
             <Badge tone="brand">
@@ -147,7 +147,7 @@ export default function NotesPage() {
               <EmptyState
                 icon={<NotebookIcon size={22} />}
                 title="No notes match"
-                description="Try a different folder or clear the search. The vault is mounted read/write for every peer."
+                description="Try a different folder or clear the search."
               />
             ) : (
               <ul className="max-h-[34rem] space-y-1 overflow-y-auto">
@@ -301,7 +301,7 @@ export default function NotesPage() {
             <EmptyState
               icon={<NotebookIcon size={22} />}
               title="Nothing to read"
-              description="Select a note on the left. Every peer writes back here, so the vault always reflects the newest mesh decisions."
+              description="Select a note on the left to read it here."
             />
           )}
         </SectionCard>

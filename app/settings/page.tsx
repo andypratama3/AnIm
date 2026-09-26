@@ -20,7 +20,6 @@ import { useConsole, resetConsolePreferences, type Density } from "@/components/
 import { useMesh } from "@/lib/hooks/use-data";
 import { useCopyToClipboard, useMounted, useTicker } from "@/lib/hooks/use-ui";
 import { PROFILES, MODEL_DEFAULT, PROVIDER, MCP_TOOLS, VAULT_PATH } from "@/lib/data/profiles";
-import { MESH_LINKS } from "@/lib/data/profiles";
 import { formatMs, formatRelative } from "@/lib/format";
 import { PageHeader, SectionCard, SegmentedControl } from "@/components/dashboard/page-header";
 import { Switch, Tabs, TabsList, TabsTrigger, TabsContent, Hint, TooltipRoot, TooltipTrigger, TooltipContent } from "@/components/ui/controls";
@@ -59,6 +58,7 @@ export default function SettingsPage() {
   const { live, setLive, interval, setInterval: setRefresh, density, setDensity, setPaletteOpen } =
     useConsole();
   const { data, mutate } = useMesh();
+  const hierarchy = data?.hierarchy ?? [];
   const now = useTicker(30_000);
   const [copied, copy] = useCopyToClipboard();
   const [hotkeys, setHotkeys] = useState(true);
@@ -216,7 +216,7 @@ export default function SettingsPage() {
         <Tabs defaultValue="profiles" className="mt-5">
           <TabsList>
             <TabsTrigger value="profiles">Profiles</TabsTrigger>
-            <TabsTrigger value="links">A2A links</TabsTrigger>
+            <TabsTrigger value="links">Reporting lines</TabsTrigger>
             <TabsTrigger value="mcp">MCP tools</TabsTrigger>
           </TabsList>
 
@@ -252,25 +252,29 @@ export default function SettingsPage() {
           </TabsContent>
 
           <TabsContent value="links">
+            {/* These are declared reporting lines from `agents/registry.json`.
+                They are not measured A2A traffic: the host collector reads
+                `a2a_agents` and keeps only a peer count, so the identities never
+                reach this process. The table used to show a `strength` and a
+                `latency` column, both derived from arithmetic on port numbers,
+                under an "A2A links" heading that made them look measured. */}
+            <p className="mb-2 text-[12px] leading-snug text-ink-subtle">
+              Declared reporting lines from the registry. Measured A2A traffic is not collected
+              yet, so none of this says how much anything is actually talking.
+            </p>
             <div className="max-h-72 overflow-y-auto">
               <table className="w-full text-[12px]">
                 <thead>
                   <tr className="text-left text-[10px] uppercase tracking-[0.14em] text-ink-subtle">
-                    <th className="py-2 pr-3">source</th>
-                    <th className="py-2 pr-3">target</th>
-                    <th className="py-2 pr-3">strength</th>
-                    <th className="py-2">latency</th>
+                    <th className="py-2 pr-3">reports from</th>
+                    <th className="py-2">reports to</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {MESH_LINKS.map((link) => (
+                  {hierarchy.map((link) => (
                     <tr key={`${link.source}-${link.target}`} className="border-t border-hairline">
                       <td className="py-1.5 pr-3 font-mono">{link.source}</td>
-                      <td className="py-1.5 pr-3 font-mono">{link.target}</td>
-                      <td className="py-1.5 pr-3">
-                        <span className="font-mono">{link.strength.toFixed(2)}</span>
-                      </td>
-                      <td className="py-1.5 font-mono">{formatMs(link.latency)}</td>
+                      <td className="py-1.5 font-mono">{link.target}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -332,7 +336,7 @@ export default function SettingsPage() {
             <Env label="model" value={MODEL_DEFAULT} />
             <Env label="provider" value={PROVIDER} />
             <Env label="peers" value={String(PROFILES.length)} />
-            <Env label="a2a links" value={String(MESH_LINKS.length)} />
+            <Env label="reporting lines" value={String(hierarchy.length)} />
             <Env label="brand" value={`${BRAND.name} v${BRAND.version}`} />
           </dl>
           <Button

@@ -72,3 +72,57 @@ describe("registry is the single source of port truth", () => {
     assert.equal(portForProfile("definitely-not-an-agent"), null);
   });
 });
+
+/**
+ * `Agent.port` was typed `number` and the live collector filled the gap with
+ * `agent.port ?? 0`. The registry only assigns ports to a handful of the 26
+ * agents, so the unassigned majority rendered as `:0` in the graph, the drawer,
+ * the command palette and every copied line — a real-looking port for something
+ * never measured. `portForProfile` above already answered "no port" with null;
+ * the display type now agrees with it.
+ */
+describe("an unassigned port is never displayed as a number", () => {
+  test("Agent.port is nullable so `?? 0` cannot reappear unnoticed", () => {
+    const types = readFileSync(new URL("../lib/types.ts", import.meta.url), "utf8");
+    const agent = types.slice(types.indexOf("export type Agent = {"));
+    assert.match(agent, /port: number \| null;/);
+  });
+
+  test("the live collector forwards null rather than inventing a port", () => {
+    const live = readFileSync(new URL("../lib/data/live-mesh.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(live, /port: agent\.port \?\? 0/);
+    assert.match(live, /port: agent\.port \?\? null/);
+  });
+
+  test("no component interpolates a port directly", () => {
+    // The four surfaces that print a port, read back as one blob.
+    const text = [
+      "../components/layout/topbar.tsx",
+      "../components/layout/command-palette.tsx",
+      "../components/dashboard/agent-drawer.tsx",
+      "../components/dashboard/mesh-graph.tsx",
+    ]
+      .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+      .join("\n");
+    assert.doesNotMatch(text, /\$\{agent\.port\}/, "a template literal would print 'null'");
+    assert.doesNotMatch(text, />:\{agent\.port\}</, "JSX would leave a bare colon");
+    assert.match(text, /formatPort\(agent\.port\)/);
+    assert.match(text, /describePort\(agent\.port\)/);
+  });
+});
+
+describe("port rendering is honest in both registers", () => {
+  test("compact form reads as a port, or as absent", async () => {
+    const { formatPort, describePort } = await import("../lib/format.ts");
+    assert.equal(formatPort(9905), ":9905");
+    assert.equal(formatPort(null), "—");
+    assert.equal(formatPort(undefined), "—");
+    assert.equal(describePort(9905), "port 9905");
+    assert.equal(describePort(null), "no port assigned");
+  });
+
+  test("port 0 is still a real number if a collector ever reports one", async () => {
+    const { formatPort } = await import("../lib/format.ts");
+    assert.equal(formatPort(0), ":0");
+  });
+});

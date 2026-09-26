@@ -42,7 +42,7 @@ export default function OverviewPage() {
     return <OverviewSkeleton />;
   }
 
-  const { agents, totals, series } = data;
+  const { agents, totals, series, hierarchy } = data;
   const throughputNow = series.throughput.at(-1) ?? 0;
   const throughputPrev = series.throughput.at(-4) ?? throughputNow;
   const throughputDelta =
@@ -131,12 +131,12 @@ export default function OverviewPage() {
           <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
             <div>
               <Eyebrow>Topology</Eyebrow>
-              <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.02em]">A2A constellation</h2>
+              <h2 className="mt-1 text-[19px] font-semibold tracking-[-0.02em]">Reporting hierarchy</h2>
             </div>
-            <MeshLegend agents={agents} />
+            <MeshLegend agents={agents} links={hierarchy} />
           </div>
 
-          <MeshGraph agents={agents} className="-mx-2 -mb-2" />
+          <MeshGraph agents={agents} links={hierarchy} className="-mx-2 -mb-2" />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-hairline pt-4">
             <AgentStrip agents={agents} onPick={setFocusAgent} />

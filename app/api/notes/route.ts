@@ -18,7 +18,19 @@ export async function GET(request: Request) {
   }
 
   return Response.json(
-    { notes, folders: VAULT_FOLDERS, generatedAt: Date.now() },
+    {
+      notes,
+      folders: VAULT_FOLDERS,
+      generatedAt: Date.now(),
+      /**
+       * Stated so the page can label the scope instead of asserting one.
+       * `store()` is a process-global seeded from `lib/data/vault.ts`: nothing
+       * is written to disk, no agent reads it, and it resets on restart. The
+       * folder names are Obsidian's because they look like a real vault, which
+       * is exactly why the page must not call it one.
+       */
+      source: { kind: "local", persisted: false, sharedWithAgents: false },
+    },
     { headers: { "cache-control": "no-store, max-age=0" } },
   );
 }

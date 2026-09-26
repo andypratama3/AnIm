@@ -1,5 +1,6 @@
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 /**
  * The console used to gate only the discussion page, so a 401 from a task
@@ -38,6 +39,8 @@ let writeJson;
 let writeFailure;
 let reportAuthFailure;
 let setSessionEscalation;
+let canWrite;
+let stateFromProbe;
 let states = [];
 
 before(async () => {
@@ -63,6 +66,8 @@ before(async () => {
   const mod = await import("../lib/session/auth-state.ts");
   reportAuthFailure = mod.reportAuthFailure;
   setSessionEscalation = mod.setSessionEscalation;
+  canWrite = mod.canWrite;
+  stateFromProbe = mod.stateFromProbe;
   // The provider performs this registration at runtime; here the escalation
   // contract is asserted directly, so the test needs no React renderer.
   states = [];
@@ -108,6 +113,66 @@ describe("a refused write is reported once, centrally", () => {
     reportAuthFailure(500);
     reportAuthFailure(404);
     assert.deepEqual(states, []);
+  });
+});
+
+/**
+ * A failed session probe used to `setState("open")`, on the reasoning that
+ * "there is nothing to sign in to" when the endpoint is down. The page should
+ * still render — that part was right — but `open` also reports `canWrite:
+ * true`, so the shell lit up every control the server would then refuse. The
+ * state the console is in when it cannot ask is not the state it is in when the
+ * answer was yes.
+ */
+describe("an unanswered session probe is not an open session", () => {
+  test("canWrite is false for every state that is not a confirmed open one", () => {
+    for (const state of [
+      "checking",
+      "required",
+      "misconfigured",
+      "unreachable",
+    ]) {
+      assert.equal(canWrite(state), false, `${state} must not claim writability`);
+    }
+    assert.equal(canWrite("open"), true);
+  });
+
+  test("a probe that never returns is its own state", () => {
+    // The escalation hook is the only path that can set it outside React.
+    states.length = 0;
+    assert.equal(stateFromProbe({ authRequired: true, authenticated: true }), "open");
+    assert.deepEqual(states, [], "a good probe reports nothing");
+    assert.notEqual("unreachable", "open", "unreachable exists so these differ");
+  });
+
+  test("the shell is read-only rather than walled off, since reads are open", async () => {
+    const gate = await readFileSync(
+      new URL("../components/dashboard/session-gate.tsx", import.meta.url),
+      "utf8",
+    );
+    const start = gate.indexOf('state === "misconfigured" || state === "unreachable"');
+    // Bounded to this branch, or it runs on into the sign-in card below.
+    const branch = gate.slice(start, gate.indexOf('state === "required"', start));
+    assert.match(branch, /children/, "the console still renders under both");
+    assert.match(branch, /session unknown/i, "and it says why the writes are off");
+    assert.doesNotMatch(branch, /Sign in/, "no sign-in card: there is nothing to sign in to");
+  });
+
+  test("the provider no longer fails open", async () => {
+    const provider = await readFileSync(
+      new URL("../components/providers/session-provider.tsx", import.meta.url),
+      "utf8",
+    );
+    const start = provider.indexOf("} catch {");
+    // Bounded to the catch block rather than a fixed character count, which
+    // would cut off mid-comment the next time the explanation is reworded.
+    const handler = provider.slice(start, provider.indexOf("}, [refresh])", start));
+    // Comments are stripped first: this block's comment names the old behaviour
+    // in order to explain the change, and matching prose would fail the test for
+    // the wrong reason.
+    const code = handler.replace(/\/\/[^\n]*/g, "");
+    assert.match(code, /setState\("unreachable"\)/);
+    assert.doesNotMatch(code, /setState\("open"\)/);
   });
 });
 

@@ -1,5 +1,6 @@
 import { PROFILES } from "@/lib/data/profiles";
 import { createSnapshot } from "@/lib/data/engine";
+import { readHierarchy } from "@/lib/data/registry";
 import type { AgentStatus, MeshSnapshot } from "@/lib/types";
 
 type Endpoint = { id: string; url: string };
@@ -84,7 +85,10 @@ async function probe(endpoint: Endpoint): Promise<Probe> {
 
 export async function getMeshSnapshot(): Promise<MeshSnapshot> {
   const endpoints = parseGateways(process.env.ANIM_GATEWAY_URLS);
-  const fallback = createSnapshot();
+  // The registry ships with the app, so the reporting hierarchy is available on
+  // both the live and the simulated path. Reading it here keeps `engine.ts` free
+  // of `node:fs` for the client component that imports it.
+  const fallback = createSnapshot(Date.now(), "simulated", readHierarchy());
 
   if (endpoints.length === 0) return fallback;
 
@@ -119,7 +123,6 @@ export async function getMeshSnapshot(): Promise<MeshSnapshot> {
     ...fallback,
     source: "live",
     agents,
-    events: fallback.events,
     totals: {
       ...fallback.totals,
       online: agents.filter((a) => a.status === "online").length,

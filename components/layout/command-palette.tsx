@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/command";
 import { Kbd, Dot } from "@/components/ui/badge";
 import { STATUS_COLOR } from "@/components/dashboard/agent-glyph";
+import { formatPort, describePort } from "@/lib/format";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; weight?: "regular" | "fill" | "bold" }>> = {
   SquaresFour: SquaresFourIcon,
@@ -121,12 +122,12 @@ export function CommandPalette() {
           {(data?.agents ?? []).map((agent) => (
             <CommandItem
               key={agent.id}
-              value={`agent ${agent.id} ${agent.role} ${agent.port}`}
+              value={`agent ${agent.id} ${agent.role} ${describePort(agent.port)}`}
               onSelect={() => run(() => setFocusAgent(agent.id))}
             >
               <Dot tone={STATUS_COLOR[agent.status]} />
               <span className="flex-1 font-medium text-ink">{agent.id}</span>
-              <span className="font-mono text-[11px] text-ink-subtle">:{agent.port}</span>
+              <span className="font-mono text-[11px] text-ink-subtle">{formatPort(agent.port)}</span>
               <span className="text-[11px] text-ink-subtle">{Math.round(agent.health)}%</span>
             </CommandItem>
           ))}

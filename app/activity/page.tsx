@@ -94,13 +94,17 @@ function ActivityInner() {
       <PageHeader
         eyebrow="Command"
         title="Activity"
-        description="A replayable log of every mesh decision: delegation, tool calls, vault writes, deploys and failures."
+        description="Every task transition and agent exchange this console has recorded. Gateway restarts, deploys and vault writes are not logged anywhere yet, so they do not appear here."
         meta={
           <>
-            <Badge tone={live ? "ok" : "neutral"}>
-              <Dot tone={live ? "var(--ok)" : "var(--ink-subtle)"} pulse={live} />
-              {live ? "streaming" : "held"}
+            {/* The toggle below pauses refetching; it does not make the log a
+                stream. Labelling generated rows "streaming" was the claim this
+                replaces. */}
+            <Badge tone="neutral">
+              <Dot tone="var(--ink-subtle)" pulse={live} />
+              {live ? "refreshing" : "paused"}
             </Badge>
+            <Badge tone="neutral">from task history + chat records</Badge>
             <Badge tone="neutral">{data?.total ?? 0} buffered</Badge>
             {levelCounts.error ? <Badge tone="danger">{levelCounts.error} errors</Badge> : null}
             {levelCounts.warn ? <Badge tone="warn">{levelCounts.warn} warnings</Badge> : null}

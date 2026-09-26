@@ -1,5 +1,6 @@
 import { getRemoteInventory, type RemoteAgent, type RemoteInventory } from "@/lib/data/remote";
-import { createEvents, createSnapshot } from "@/lib/data/engine";
+import { createSnapshot } from "@/lib/data/engine";
+import { readHierarchy } from "@/lib/data/registry";
 import { PROFILES } from "@/lib/data/profiles";
 import type { Agent, AgentStatus, MeshSnapshot, Series } from "@/lib/types";
 
@@ -57,7 +58,8 @@ function toAgent(agent: RemoteAgent): Agent {
     role: DEPARTMENTS[agent.department ?? ""] ?? agent.department ?? "Unassigned",
     // A profile with no port is not reachable; keep the port field numeric because
     // the roster and the drawer both render it directly.
-    port: agent.port ?? 0,
+    // No `?? 0`: an unassigned port is unknown, not zero.
+    port: agent.port ?? null,
     status,
     // The host does not report the resolved model or provider, so these stay empty
     // rather than being borrowed from a simulated profile.
@@ -117,7 +119,7 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
     return {
       mode: "simulated",
       reason: remote.reason,
-      snapshot: createSnapshot(now, "simulated"),
+      snapshot: createSnapshot(now, "simulated", readHierarchy()),
     };
   }
 
@@ -136,9 +138,9 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
     generatedAt: now,
     source: "live",
     agents,
+    hierarchy: readHierarchy(),
     series: syntheticSeries(now),
     heat: heatFromInventory(agents),
-    events: createEvents(now),
     totals: {
       online,
       degraded,
