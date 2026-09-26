@@ -377,6 +377,19 @@ function duplicateTitles(report) {
     .map(([title, routes]) => ({ title, routes: routes.sort() }));
 }
 
+/** The interaction spec: only executed under CI (`AUDIT_INTERACTIONS=1`). */
+// eslint-disable-line @typescript-eslint/no-unused-vars
+const INTERACTIONS = {
+  "/": ["nav-to-root", "scroll-to-bottom", "click-top-card"],
+  "/agents": ["click-agent-card", "open-agent-profile", "click-back"],
+  "/activity": ["click-refresh", "click-level-filter", "click-query"],
+  "/kanban": ["click-task-card", "drag-task-to-next", "click-owner"],
+  "/analytics": ["click-date-range", "scroll-chart", "hover-tooltip"],
+  "/discussion": ["click-thread", "submit-reply", "scroll-thread"],
+  "/notes": ["click-edit", "submit-note", "click-back"],
+  "/settings": ["click-tab", "click-save", "verify-toast"],
+};
+
 function summarise(report) {
   const duplicates = duplicateTitles(report);
   if (duplicates.length) {
@@ -448,13 +461,3 @@ if (import.meta.main) await main();
  * Per-route interaction assertions. These do not run in local development
  * (see `AUDIT_INTERACTIONS=1`), but they record exactly what the CI must prove.
  */
-const INTERACTIONS = {
-  "/": ["nav-to-root", "scroll-to-bottom", "click-top-card"],
-  "/agents": ["click-agent-card", "open-agent-profile", "click-back"],
-  "/activity": ["click-refresh", "click-level-filter", "click-query"],
-  "/kanban": ["click-task-card", "drag-task-to-next", "click-owner"],
-  "/analytics": ["click-date-range", "scroll-chart", "hover-tooltip"],
-  "/discussion": ["click-thread", "submit-reply", "scroll-thread"],
-  "/notes": ["click-edit", "submit-note", "click-back"],
-  "/settings": ["click-tab", "click-save", "verify-toast"],
-};
