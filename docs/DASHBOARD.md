@@ -136,6 +136,34 @@ The UI says so in the toast rather than claiming a peer review was confirmed.
 Enforcing real two-person review needs per-user identity, which is a larger
 change than a guard function.
 
+## What the topology draws
+
+The constellation on `/` only places agents that are up. `offline` means the
+process is not running, so those agents take no slot on the ring, contribute no
+link, and cannot be focused from the chart. A stopped gateway cannot answer, and
+drawing it as a peer implied otherwise — the chart was spending most of its area
+on nodes that could not respond.
+
+Three things follow from the same filter, and all three are asserted in
+`tests/mesh-layout.test.mjs`:
+
+- The ring is divided by the number of **visible** agents, not the roster size.
+  Sizing the layout from the full roster while drawing a subset is what packed 26
+  nodes into a ring that could hold a handful.
+- The `links` badge counts the links actually drawn. A link to a hidden agent
+  would be a line running to nothing, and counting it would report connections
+  the chart does not show.
+- An `N of M active` badge sits beside it, so the reduction is visible instead of
+  looking like lost data.
+
+`AgentStrip` is deliberately **not** filtered. It is the focus picker on `/`
+`/agents` and `/kanban`, and an offline agent is still worth selecting there.
+
+Bubble radii are smaller than the arc that holds them: at `RADIUS` 218, 26 nodes
+share about 53px of arc, and the widest bubble is 44px across. Label offsets are
+derived from the radius rather than written as constants, so shrinking a circle
+cannot leave its port label floating below it.
+
 ## Realtime behaviour
 
 `LiveConstellationPanel` polls `/api/mesh-live` every 15s and refetches when the

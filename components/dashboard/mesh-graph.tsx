@@ -10,30 +10,56 @@ import { formatMs, formatPercent } from "@/lib/format";
 import type { Agent } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { hottestAgent, meanLatency } from "@/lib/data/mesh-metrics";
-
-const SIZE = 620;
-const CENTER = SIZE / 2;
-const RADIUS = 218;
+import {
+  activeAgents,
+  bubbleRadius,
+  labelOffsets,
+  visibleLinks,
+  CENTER,
+  RADIUS,
+  SIZE,
+} from "@/lib/data/mesh-layout";
 
 export function MeshGraph({ agents, className }: { agents: Agent[]; className?: string }) {
   const { setFocusAgent, focusAgent } = useConsole();
   const [hovered, setHovered] = useState<string | null>(null);
 
+  // Only agents that are actually up get a slot on the ring, and the ring
+  // divides by how many are left. Sizing the layout from the full roster while
+  // drawing the active subset is what packed 26 nodes into a space that could
+  // hold a handful.
+  const visible = useMemo(() => activeAgents(agents), [agents]);
+  const links = useMemo(() => visibleLinks(MESH_LINKS, agents), [agents]);
+
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>();
-    agents.forEach((agent, index) => {
-      const angle = (index / agents.length) * Math.PI * 2 - Math.PI / 2;
+    visible.forEach((agent, index) => {
+      const angle = (index / visible.length) * Math.PI * 2 - Math.PI / 2;
       map.set(agent.id, {
         x: CENTER + Math.cos(angle) * RADIUS,
         y: CENTER + Math.sin(angle) * RADIUS,
       });
     });
     return map;
-  }, [agents]);
+  }, [visible]);
 
   const active = hovered ?? focusAgent;
 
   if (agents.length === 0) return null;
+
+  if (visible.length === 0) {
+    return (
+      <div
+        className={cn(
+          "flex aspect-square w-full items-center justify-center px-6 text-center text-sm text-ink-subtle",
+          className,
+        )}
+      >
+        No agent is up right now — all {agents.length} report offline, so there is
+        no topology to draw.
+      </div>
+    );
+  }
 
   return (
     <div className={cn("relative", className)}>
@@ -56,7 +82,7 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
         />
         <circle cx={CENTER} cy={CENTER} r={RADIUS - 62} fill="none" stroke="var(--hairline)" />
 
-        {MESH_LINKS.map((link, index) => {
+        {links.map((link, index) => {
           const from = positions.get(link.source);
           const to = positions.get(link.target);
           if (!from || !to) return null;
@@ -100,11 +126,14 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
           );
         })}
 
-        {agents.map((agent) => {
+        {visible.map((agent) => {
           const point = positions.get(agent.id);
           if (!point) return null;
           const dimmed = Boolean(active) && active !== agent.id;
           const tone = STATUS_COLOR[agent.status];
+
+          const r = bubbleRadius(agent.id);
+          const label = labelOffsets(agent.id);
 
           return (
             <g
@@ -117,7 +146,7 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
               onClick={() => setFocusAgent(agent.id)}
             >
               <motion.circle
-                r={agent.id === "default" ? 34 : 28}
+                r={r}
                 fill="var(--surface)"
                 stroke={tone}
                 strokeWidth={agent.id === active ? 2.4 : 1.2}
@@ -127,10 +156,10 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
                 style={{ transformOrigin: "center" }}
               />
               {agent.status === "busy" || agent.status === "degraded" ? (
-                <circle r={38} fill="none" stroke={tone} strokeWidth={1} opacity={0.5}>
+                <circle r={r + 10} fill="none" stroke={tone} strokeWidth={1} opacity={0.5}>
                   <animate
                     attributeName="r"
-                    values="30;44;30"
+                    values={`${r + 2};${r + 16};${r + 2}`}
                     dur="3.4s"
                     repeatCount="indefinite"
                   />
@@ -144,25 +173,25 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
               ) : null}
               <text
                 textAnchor="middle"
-                dy={agent.id === "default" ? 5 : 4}
+                dy={label.glyph}
                 className="fill-[var(--ink)]"
-                style={{ fontSize: agent.id === "default" ? 15 : 12, fontWeight: 600 }}
+                style={{ fontSize: label.glyphFont, fontWeight: 600 }}
               >
                 {agent.id === "default" ? "ORCH" : agent.id.slice(0, 4).toUpperCase()}
               </text>
               <text
                 textAnchor="middle"
-                dy={agent.id === "default" ? 52 : 46}
+                dy={label.name}
                 className="fill-[var(--ink-subtle)]"
-                style={{ fontSize: 10, letterSpacing: "0.08em" }}
+                style={{ fontSize: label.nameFont, letterSpacing: "0.08em" }}
               >
                 {agent.id}
               </text>
               <text
                 textAnchor="middle"
-                dy={agent.id === "default" ? 66 : 60}
+                dy={label.port}
                 className="fill-[var(--ink-subtle)]"
-                style={{ fontSize: 9, fontFamily: "var(--font-mono)" }}
+                style={{ fontSize: label.portFont, fontFamily: "var(--font-mono)" }}
               >
                 :{agent.port}
               </text>
@@ -172,7 +201,7 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
       </svg>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2">
-        {agents.map((agent) => (
+        {visible.map((agent) => (
           <button
             key={agent.id}
             type="button"
@@ -203,10 +232,14 @@ export function MeshLegend({ agents }: { agents: Agent[] }) {
   // roll-ups live in `mesh-metrics.ts` where they are unit-tested.
   const avgLatency = meanLatency(agents);
   const busiest = hottestAgent(agents);
+  const shown = activeAgents(agents);
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge tone="brand">{MESH_LINKS.length} links</Badge>
+      <Badge tone="brand">{visibleLinks(MESH_LINKS, agents).length} links</Badge>
+      <Badge tone="neutral">
+        {shown.length} of {agents.length} active
+      </Badge>
       <Badge tone="neutral">
         <span className="font-mono">{formatMs(avgLatency)}</span> mean hop
       </Badge>
