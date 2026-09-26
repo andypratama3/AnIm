@@ -34,14 +34,20 @@ export type Agent = {
 
 export type MeshTotals = {
   online: number;
-  busy: number;
+  /**
+   * Queue depth is not reported by the mesh collector, so `busy`, `tasks` and
+   * `tokens` are `null` when unmeasured rather than `0`. Rendering a hard zero
+   * would read as a measured fact - "0% success", "0ms p95" - which is exactly
+   * the kind of invented number this dashboard is meant to remove.
+   */
+  busy: number | null;
   degraded: number;
   offline: number;
-  tasks: number;
-  tokens: number;
-  avgLatency: number;
-  p95Latency: number;
-  successRate: number;
+  tasks: number | null;
+  tokens: number | null;
+  avgLatency: number | null;
+  p95Latency: number | null;
+  successRate: number | null;
   meshLinks: number;
 };
 

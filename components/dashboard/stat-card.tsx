@@ -8,7 +8,11 @@ import { cn } from "@/lib/utils";
 
 type StatCardProps = {
   label: string;
-  value: number;
+  /**
+   * Accepts a string so an unmeasured metric can render as an em dash instead of
+   * a fabricated zero. Numbers keep the count-up animation.
+   */
+  value: number | string;
   suffix?: string;
   prefix?: string;
   decimals?: number;
@@ -37,8 +41,13 @@ export function StatCard({
   sparkHeight = 34,
   onClick,
 }: StatCardProps) {
-  const animated = useCountUp(value);
-  const shown = decimals > 0 ? animated.toFixed(decimals) : Math.round(animated).toLocaleString();
+  const isNumber = typeof value === "number";
+  const animated = useCountUp(isNumber ? value : 0);
+  const shown = !isNumber
+    ? value
+    : decimals > 0
+      ? animated.toFixed(decimals)
+      : Math.round(animated).toLocaleString();
 
   return (
     <motion.div

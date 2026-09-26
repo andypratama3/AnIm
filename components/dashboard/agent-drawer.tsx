@@ -6,7 +6,6 @@ import {
   XIcon,
   CopyIcon,
   CheckIcon,
-  ArrowClockwiseIcon,
   PaperPlaneTiltIcon,
   CpuIcon,
   DatabaseIcon,
@@ -36,11 +35,48 @@ export function AgentDrawer() {
 
   const agent = data?.agents.find((item) => item.id === focusAgent);
 
-  const act = async (label: string, fn: () => void) => {
-    setBusy(label);
-    await new Promise((resolve) => window.setTimeout(resolve, 620));
-    fn();
-    setBusy(null);
+  /**
+   * Ping now measures a real round trip through /api/agent-probe. The previous
+   * implementation slept 620ms and printed a latency the page already had, which
+   * made a dead peer look responsive.
+   */
+  const ping = async () => {
+    if (!agent || busy) return;
+    setBusy("ping");
+    try {
+      const response = await fetch("/api/agent-probe", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile: agent.id }),
+      });
+      if (response.status === 401) {
+        toast.error("Sign in required", { description: "reload and sign in again" });
+        return;
+      }
+      const body = (await response.json()) as {
+        tcpConnected?: boolean;
+        connectMs?: number | null;
+        a2aStatus?: number | null;
+        a2aMs?: number | null;
+        error?: string | null;
+      };
+      if (body.tcpConnected) {
+        const rtt = body.a2aMs ?? body.connectMs;
+        toast.success(`${agent.id} answered`, {
+          description: `${body.a2aStatus ?? "no status"} on :${agent.port}${
+            rtt != null ? ` · ${rtt}ms` : ""
+          }`,
+        });
+      } else {
+        toast.error(`${agent.id} unreachable`, {
+          description: `no TCP accept on :${agent.port}${body.error ? ` (${body.error})` : ""}`,
+        });
+      }
+    } catch {
+      toast.error("Probe failed", { description: "could not reach the bridge" });
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -147,45 +183,10 @@ export function AgentDrawer() {
               ) : null}
             </div>
 
-            <div className="grid grid-cols-2 gap-2 border-t border-hairline px-5 py-4">
-              <Button
-                variant="primary"
-                onClick={() =>
-                  act("ping", () =>
-                    toast.success(`Pinged ${agent.id}`, {
-                      description: `Responded in ${formatMs(agent.latencyMs)} on port ${agent.port}.`,
-                    }),
-                  )
-                }
-              >
-                <PaperPlaneTiltIcon size={15} weight="fill" />
-                {busy === "ping" ? "Pinging…" : "Ping peer"}
-              </Button>
-              <Button
-                variant="subtle"
-                onClick={() =>
-                  act("restart", () =>
-                    toast.success(`${agent.id} restarted`, {
-                      description: "Gateway reload scheduled. Health will re-probe shortly.",
-                    }),
-                  )
-                }
-              >
-                <ArrowClockwiseIcon size={15} className={cn(busy === "restart" && "animate-spin")} />
-                {busy === "restart" ? "Restarting…" : "Restart"}
-              </Button>
-              <Button
-                variant="subtle"
-                onClick={() =>
-                  act("delegate", () =>
-                    toast.message(`Delegated to ${agent.id}`, {
-                      description: "A scope brief is queued for the next A2A window.",
-                    }),
-                  )
-                }
-              >
-                <ShareNetworkIcon size={15} />
-                Delegate
+            <div className="grid gap-2 border-t border-hairline px-5 py-4 sm:grid-cols-2">
+              <Button variant="primary" onClick={() => void ping()} disabled={busy !== null}>
+                <PaperPlaneTiltIcon size={15} weight="fill" className={cn(busy === "ping" && "animate-pulse")} />
+                {busy === "ping" ? "Measuring…" : "Measure round trip"}
               </Button>
               <Button
                 variant="ghost"

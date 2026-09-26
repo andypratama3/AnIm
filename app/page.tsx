@@ -15,7 +15,14 @@ import { Badge } from "@/components/ui/badge";
 import { useMesh } from "@/lib/hooks/use-data";
 import { useConsole } from "@/components/providers/console-provider";
 import { useMounted } from "@/lib/hooks/use-ui";
-import { formatCompact, formatMs, formatNumber, formatPercent, formatRelative } from "@/lib/format";
+import {
+  formatCompact,
+  formatMs,
+  formatNumber,
+  formatPercent,
+  formatRelative,
+  NOT_MEASURED,
+} from "@/lib/format";
 import { MeshGraph, MeshLegend, AgentStrip } from "@/components/dashboard/mesh-graph";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { LiveFeed } from "@/components/dashboard/live-feed";
@@ -95,18 +102,24 @@ export default function OverviewPage() {
         />
         <StatCard
           label="Open tasks"
-          value={totals.tasks}
+          value={totals.tasks ?? NOT_MEASURED}
           tone="var(--brand-2)"
           icon={<CubeIcon size={17} weight="duotone" />}
-          hint={`${totals.busy} agents busy`}
+          hint={
+            totals.busy == null ? "queue depth not reported by the collector" : `${totals.busy} agents busy`
+          }
           onClick={() => router.push("/kanban")}
         />
         <StatCard
           label="Token spend"
-          value={totals.tokens}
+          value={totals.tokens ?? NOT_MEASURED}
           tone="var(--brand-3)"
           icon={<StackIcon size={17} weight="duotone" />}
-          hint={`${formatPercent(totals.successRate)} success rate`}
+          hint={
+            totals.successRate == null
+              ? "no request tally on the host"
+              : `${formatPercent(totals.successRate)} success rate`
+          }
           onClick={() => router.push("/analytics")}
         />
       </section>

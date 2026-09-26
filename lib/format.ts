@@ -1,4 +1,5 @@
-export function formatCompact(value: number, digits = 1): string {
+export function formatCompact(value: number | null | undefined, digits = 1): string {
+  if (value == null) return NOT_MEASURED;
   return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: digits,
@@ -17,7 +18,14 @@ export function formatCurrency(value: number): string {
   }).format(value);
 }
 
-export function formatMs(value: number): string {
+/**
+ * Unmeasured metrics render as an em dash. A hard `0 ms` would be
+ * indistinguishable from a genuinely instant hop.
+ */
+export const NOT_MEASURED = "\u2014";
+
+export function formatMs(value: number | null | undefined): string {
+  if (value == null) return NOT_MEASURED;
   if (value >= 1000) return `${(value / 1000).toFixed(2)}s`;
   return `${Math.round(value)}ms`;
 }
@@ -61,7 +69,8 @@ export function formatDay(ts: number): string {
   }).format(ts);
 }
 
-export function formatPercent(value: number, digits = 1): string {
+export function formatPercent(value: number | null | undefined, digits = 1): string {
+  if (value == null) return NOT_MEASURED;
   return `${value.toFixed(digits)}%`;
 }
 

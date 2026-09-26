@@ -50,10 +50,30 @@ SSH and returns a typed snapshot.
   returns env values, tokens, or file bodies.
 - Filename allowlist stays `*.md`. Do not widen it.
 
+### Write endpoints: auth and rate limits
+
 `app/api/agent-chat` executes a one-shot prompt against a named Hermes profile.
 It is allowlisted to the 26 registry ids, caps prompt and output size, and
-rejects traversal. **It has no authentication and no rate limit.** It must not be
-exposed publicly until both are in place.
+rejects traversal. Because one request starts a real remote process that can run
+for minutes, `lib/security/guard.ts` puts three limits in front of it:
+
+- **Auth.** The profile list and every chat call require either the
+  `ANIM_API_TOKEN` bearer value or a valid session cookie. Read-only routes
+  (`/api/mesh`, `/api/mesh-live`) stay open: they expose no secrets and the UI
+  has no session, so gating them would only add a login wall in front of public
+  counters.
+- **Session, not browser token.** The operator pastes the token once into
+  `SessionGate`; `/api/session` verifies it with a constant-time compare and
+  returns an HttpOnly, SameSite=Strict cookie scoped to `/api`. The token never
+  reaches page JavaScript.
+- **Rate limit and concurrency.** Per-client budget
+  (`ANIM_CHAT_RATE_LIMIT`, default 6 per `ANIM_CHAT_RATE_WINDOW_MS`) plus a global
+  ceiling on simultaneous remote processes (`ANIM_CHAT_MAX_CONCURRENT`, default
+  2). Exhausting the ceiling returns `503` rather than queueing unbounded work.
+
+With `ANIM_API_TOKEN` unset the endpoint stays reachable, which is only
+acceptable for local development on a trusted machine. **Set it in any shared or
+public deployment.**
 
 ## Realtime behaviour
 

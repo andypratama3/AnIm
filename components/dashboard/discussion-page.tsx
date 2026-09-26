@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/menus";
 import { SectionCard, PageHeader } from "@/components/dashboard/page-header";
+import { SessionGate } from "@/components/dashboard/session-gate";
 import { toast } from "sonner";
 
 /** Mirrors the acceptance ladder in agents/registry.json. */
@@ -45,6 +46,21 @@ type WorkItem = {
   updatedAt: number;
 };
 
+/**
+ * The single legal next step for each phase. Mirrors TRANSITIONS in
+ * lib/data/task-store.ts, which is the authority: the client only proposes, and
+ * the server rejects anything else.
+ */
+const NEXT_PHASE: Record<Phase, Phase | undefined> = {
+  PROPOSED: "IN_PROGRESS",
+  IN_PROGRESS: "SELF_CHECKED",
+  SELF_CHECKED: "PEER_REVIEWED",
+  PEER_REVIEWED: "VERIFIED",
+  VERIFIED: undefined,
+  BLOCKED: "IN_PROGRESS",
+  FAILED: "IN_PROGRESS",
+};
+
 const PHASE_TONE: Record<Phase, string> = {
   PROPOSED: "neutral",
   IN_PROGRESS: "brand",
@@ -55,20 +71,7 @@ const PHASE_TONE: Record<Phase, string> = {
   FAILED: "danger",
 };
 
-/** Owner inbox: only VERIFIED work is allowed to reach Andy. */
-// Fixed epoch keeps the seed deterministic: Date.now() at module scope would make
-// the server HTML and the client render disagree and break hydration.
-const SEED_EPOCH = 1758800000000;
-
-const OWNER_INBOX_SEED: WorkItem[] = [
-  { id: "V-1", title: "19 new profiles created with 25 A2A peers each", owner: "hermes-operator", reviewer: "dashboard-engineer", phase: "VERIFIED", updatedAt: SEED_EPOCH - 1000 * 60 * 18 },
-  { id: "V-2", title: "Pair-token matrix 26x25 rotated, 46 live pairs preserved", owner: "security-engineer", reviewer: "code-reviewer", phase: "VERIFIED", updatedAt: SEED_EPOCH - 1000 * 60 * 42 },
-  { id: "V-3", title: "Dashboard throughput fabricated-metric defect", owner: "dashboard-engineer", reviewer: "code-reviewer", phase: "VERIFIED", updatedAt: SEED_EPOCH - 1000 * 60 * 6 },
-  { id: "V-4", title: "Activation runbook for 19 stopped gateways", owner: "hermes-operator", reviewer: "devops-engineer", phase: "PEER_REVIEWED", updatedAt: SEED_EPOCH - 1000 * 60 * 95 },
-  { id: "V-5", title: "Vault seed for 26 self-improvement logs", owner: "knowledge-agent", reviewer: "content-strategist", phase: "IN_PROGRESS", updatedAt: SEED_EPOCH - 1000 * 60 * 3 },
-];
-
-export function DiscussionPage() {
+function DiscussionConsole() {
   const [profiles, setProfiles] = useState<string[]>([]);
   const [target, setTarget] = useState("default");
   const [profileQuery, setProfileQuery] = useState("");
@@ -76,7 +79,8 @@ export function DiscussionPage() {
   const [sending, setSending] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [logQuery, setLogQuery] = useState("");
-  const [work, setWork] = useState<WorkItem[]>(OWNER_INBOX_SEED);
+  const [work, setWork] = useState<WorkItem[]>([]);
+  const [queueBusy, setQueueBusy] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -127,6 +131,25 @@ export function DiscussionPage() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ profile: target, prompt: text }),
       });
+      // A 401 means the session expired rather than the agent failing, so say so
+      // instead of reporting it as a delivery failure.
+      if (response.status === 401) {
+        const reason = "session expired - reload and sign in again";
+        setMessages((current) => [
+          ...current,
+          {
+            id: `agent-${Date.now()}`,
+            from: "agent",
+            profile: target,
+            text: `Not delivered: ${reason}`,
+            ts: Date.now(),
+            failed: true,
+          },
+        ]);
+        toast.error("Sign in required", { description: reason });
+        return;
+      }
+
       const body = (await response.json()) as {
         ok?: boolean;
         reply?: string;
@@ -195,21 +218,76 @@ export function DiscussionPage() {
   const verified = useMemo(() => visibleWork.filter((item) => item.phase === "VERIFIED"), [visibleWork]);
   const pending = useMemo(() => visibleWork.filter((item) => item.phase !== "VERIFIED"), [visibleWork]);
 
-  const advance = useCallback((id: string) => {
-    setWork((current) =>
-      current.map((item) => {
-        if (item.id !== id) return item;
-        const ladder: Phase[] = ["PROPOSED", "IN_PROGRESS", "SELF_CHECKED", "PEER_REVIEWED", "VERIFIED"];
-        const index = ladder.indexOf(item.phase);
-        const next = ladder[Math.min(index + 1, ladder.length - 1)];
-        if (next === item.phase) return item;
-        return { ...item, phase: next, updatedAt: Date.now() };
-      }),
-    );
-    toast("Verification advanced", {
-      description: "Owner only receives work once it reaches VERIFIED.",
-    });
+  const loadQueue = useCallback(async () => {
+    try {
+      const response = await fetch("/api/tasks", { cache: "no-store" });
+      if (response.status === 401) return;
+      const body = (await response.json()) as { tasks?: WorkItem[] };
+      if (Array.isArray(body.tasks)) setWork(body.tasks);
+    } catch {
+      // Leave the queue empty rather than showing rows we cannot stand behind.
+    }
   }, []);
+
+  useEffect(() => {
+    // Deferred so the effect body performs no synchronous setState.
+    const kick = window.setTimeout(() => void loadQueue(), 0);
+    return () => window.clearTimeout(kick);
+  }, [loadQueue]);
+
+  /**
+   * Move one item along the ladder. The server owns the rules: it rejects a jump
+   * that skips peer review, and it refuses to let the owner verify their own
+   * work. The button names the exact next state instead of advancing blindly.
+   */
+  const advance = useCallback(
+    async (id: string) => {
+      const item = work.find((entry) => entry.id === id);
+      if (!item || queueBusy) return;
+      const next = NEXT_PHASE[item.phase];
+      if (!next) return;
+      setQueueBusy(true);
+      try {
+        const response = await fetch(`/api/tasks/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ state: next, actor: item.reviewer }),
+        });
+        const body = (await response.json()) as WorkItem & { error?: string };
+        if (!response.ok) {
+          toast.error("Transition rejected", { description: body.error ?? "unknown reason" });
+          return;
+        }
+        setWork((current) => current.map((entry) => (entry.id === id ? body : entry)));
+        toast.success(`${id} \u2192 ${next}`, {
+          description:
+            next === "VERIFIED"
+              ? "Peer review recorded. Deliverable to the owner."
+              : "Recorded with reviewer attribution.",
+        });
+      } catch {
+        toast.error("Transition failed", { description: "could not reach the review store" });
+      } finally {
+        setQueueBusy(false);
+      }
+    },
+    [work, queueBusy],
+  );
+
+  const resetQueue = useCallback(async () => {
+    setQueueBusy(true);
+    try {
+      const response = await fetch("/api/tasks", { method: "DELETE" });
+      if (!response.ok) {
+        toast.error("Reset rejected");
+        return;
+      }
+      await loadQueue();
+      toast.success("Review queue reset");
+    } finally {
+      setQueueBusy(false);
+    }
+  }, [loadQueue]);
 
   return (
     <div className="space-y-6">
@@ -364,7 +442,12 @@ export function DiscussionPage() {
             title="Owner inbox"
             description="Only independently verified work is deliverable to Andy. Everything else stays here."
             actions={
-              <Button variant="ghost" size="xs" onClick={() => setWork(OWNER_INBOX_SEED.map((item) => ({ ...item })))}>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => void resetQueue()}
+                disabled={queueBusy}
+              >
                 <ArrowsClockwiseIcon size={13} />
                 reset
               </Button>
@@ -414,8 +497,15 @@ export function DiscussionPage() {
                     <span className="text-[11px] text-ink-subtle">
                       {item.owner} → {item.reviewer}
                     </span>
-                    <Button variant="subtle" size="xs" onClick={() => advance(item.id)}>
-                      advance
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={() => void advance(item.id)}
+                      disabled={queueBusy || !NEXT_PHASE[item.phase]}
+                    >
+                      {NEXT_PHASE[item.phase]
+                        ? `advance to ${NEXT_PHASE[item.phase]}`
+                        : "terminal"}
                     </Button>
                   </div>
                 </div>
@@ -455,5 +545,13 @@ export function DiscussionPage() {
         </div>
       </SectionCard>
     </div>
+  );
+}
+
+export function DiscussionPage() {
+  return (
+    <SessionGate>
+      <DiscussionConsole />
+    </SessionGate>
   );
 }

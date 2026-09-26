@@ -14,7 +14,13 @@ import {
 import { useMesh } from "@/lib/hooks/use-data";
 import { useConsole } from "@/components/providers/console-provider";
 import { useCopyToClipboard } from "@/lib/hooks/use-ui";
-import { formatCompact, formatMs, formatNumber, formatPercent } from "@/lib/format";
+import {
+  formatCompact,
+  formatMs,
+  formatNumber,
+  formatPercent,
+  NOT_MEASURED,
+} from "@/lib/format";
 import { PageHeader, SectionCard, SegmentedControl } from "@/components/dashboard/page-header";
 import {
   ThroughputChart,
@@ -32,6 +38,11 @@ import { STATUS_COLOR } from "@/components/dashboard/agent-glyph";
 import { toast } from "sonner";
 
 type Metric = "health" | "latency" | "load" | "tokens" | "queue";
+
+/** Renders a fractional window without pretending it is a whole number. */
+function formatWindow(minutes: number): string {
+  return minutes >= 1 ? minutes.toFixed(0) : minutes.toFixed(1);
+}
 
 export default function AnalyticsPage() {
   const { data, isLoading, mutate } = useMesh();
@@ -71,10 +82,15 @@ export default function AnalyticsPage() {
   }
 
   const { series, totals, agents } = data;
-  const avgThroughput = series.throughput.reduce((sum, value) => sum + value, 0) / series.throughput.length;
+  const avgThroughput =
+    series.throughput.reduce((sum, value) => sum + value, 0) / series.throughput.length;
   const peakLatency = Math.max(...series.latency);
   const totalErrors = series.errors.reduce((sum, value) => sum + value, 0);
-  const windowMinutes = Math.round(series.labels.length * 0.5);
+  // The window comes from the real bucket width, not an assumed 30s interval.
+  const windowMinutes = (series.labels.length * series.resolutionSec) / 60;
+  // The engine reports mean requests/second per bucket. Summing those buckets
+  // would produce a number with no unit, so a rate is averaged instead.
+  const synthetic = series.synthetic;
 
   const exportCsv = () => {
     const header = "agent,status,health,latency_ms,load,tokens,queue,uptime\n";
@@ -98,16 +114,22 @@ export default function AnalyticsPage() {
       <PageHeader
         eyebrow="Workflow"
         title="Analytics"
-        description={`Rolling ${windowMinutes}-minute window sampled every 30 seconds across all seven peers.`}
+        description={`Rolling ${formatWindow(windowMinutes)}-minute window, ${series.resolutionSec}s buckets across all ${agents.length} peers.${
+          synthetic ? " Series is generated locally - the mesh host keeps no history." : ""
+        }`}
         meta={
           <>
             <Badge tone={data.source === "live" ? "ok" : "neutral"}>
               {data.source === "live" ? "live gateways" : "simulated"}
             </Badge>
             <Badge tone="neutral">{interval / 1000}s refresh</Badge>
-            <Badge tone={totals.successRate >= 98 ? "ok" : "warn"}>
-              {formatPercent(totals.successRate)} success
-            </Badge>
+            {totals.successRate == null ? (
+              <Badge tone="neutral">success not reported</Badge>
+            ) : (
+              <Badge tone={totals.successRate >= 98 ? "ok" : "warn"}>
+                {formatPercent(totals.successRate)} success
+              </Badge>
+            )}
           </>
         }
         actions={
@@ -147,8 +169,7 @@ export default function AnalyticsPage() {
         />
         <StatCard
           label="p95 latency"
-          value={totals.p95Latency}
-          suffix=" ms"
+          value={totals.p95Latency ?? NOT_MEASURED}
           tone="var(--brand-2)"
           data={series.latency}
           icon={<ClockIcon size={17} weight="duotone" />}
@@ -156,11 +177,15 @@ export default function AnalyticsPage() {
         />
         <StatCard
           label="Token burn"
-          value={totals.tokens}
+          value={totals.tokens ?? NOT_MEASURED}
           tone="var(--brand-3)"
           data={series.tokens}
           icon={<CpuIcon size={17} weight="duotone" />}
-          hint={`${formatCompact(totals.tokens / Math.max(1, windowMinutes))} per minute`}
+          hint={
+            synthetic
+              ? "generated locally, not measured"
+              : `${formatCompact((totals.tokens ?? 0) / Math.max(1, windowMinutes))} per minute`
+          }
         />
         <StatCard
           label="Errors"
@@ -264,10 +289,18 @@ export default function AnalyticsPage() {
         <div className="space-y-4">
           <SectionCard title="Mesh composition" description="Where the health score comes from.">
             <div className="flex items-center justify-around gap-3">
-              <RadialGauge value={totals.successRate} size={116} label="success %" />
+              <RadialGauge
+                value={totals.successRate ?? 0}
+                size={116}
+                label={totals.successRate == null ? "not reported" : "success %"}
+              />
               <div className="space-y-2 text-[12px]">
                 <Line label="online" value={`${totals.online}/${agents.length}`} tone="var(--ok)" />
-                <Line label="busy" value={String(totals.busy)} tone="var(--brand)" />
+                <Line
+                  label="busy"
+                  value={totals.busy == null ? NOT_MEASURED : String(totals.busy)}
+                  tone="var(--brand)"
+                />
                 <Line label="degraded" value={String(totals.degraded)} tone="var(--warn)" />
                 <Line label="offline" value={String(totals.offline)} tone="var(--danger)" />
                 <Line label="links" value={String(totals.meshLinks)} tone="var(--brand-3)" />
