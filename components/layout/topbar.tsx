@@ -3,6 +3,7 @@
 import { useTheme } from "next-themes";
 import { usePathname } from "next/navigation";
 import { motion } from "motion/react";
+import { useEffect } from "react";
 import {
   MagnifyingGlassIcon,
   SunIcon,
@@ -68,6 +69,23 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
   const fullscreen = useFullscreen();
 
   const degraded = (data?.totals.degraded ?? 0) + (data?.totals.offline ?? 0);
+
+  /**
+   * Every route here is a client component, so none of them can export
+   * `metadata` and the layout's `default` title ("Overview · AnIm") was being
+   * served for all of them: eight tabs, seven of them identical, and "Overview"
+   * on the settings page. The nav label is already the single source of truth,
+   * so the title follows it instead of being restated per page where it would
+   * drift. `/discussion` is a server component and sets the same string
+   * statically; this only agrees with it.
+   */
+  useEffect(() => {
+    const previous = document.title;
+    document.title = `${meta.title} · ${BRAND.name}`;
+    return () => {
+      document.title = previous;
+    };
+  }, [meta.title]);
 
   return (
     <header className="sticky top-0 z-30 glass-deep border-b border-hairline">

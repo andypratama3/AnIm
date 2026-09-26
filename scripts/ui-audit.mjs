@@ -352,7 +352,41 @@ async function main() {
   console.log(`wrote ${OUT}/report.json (${report.length} checks)`);
 }
 
+/**
+ * A shared title is not a cosmetic problem. History entries, browser tabs and
+ * "open tabs" lists all key off `document.title`, so eight routes that share
+ * one title are eight places the operator cannot tell apart — and the layout
+ * default meant seven of them rendered "Overview · AnIm", including the
+ * settings page. The old check only asserted the string contained "AnIm",
+ * which every one of them did.
+ */
+function duplicateTitles(report) {
+  const byRoute = new Map();
+  for (const row of report) {
+    if (row.viewport !== "desktop") continue; // same DOM, one look is enough
+    byRoute.set(row.route, (row.title ?? "").trim());
+  }
+  const seen = new Map();
+  for (const [route, title] of byRoute) {
+    if (!title) continue;
+    if (!seen.has(title)) seen.set(title, []);
+    seen.get(title).push(route);
+  }
+  return [...seen.entries()]
+    .filter(([, routes]) => routes.length > 1)
+    .map(([title, routes]) => ({ title, routes: routes.sort() }));
+}
+
 function summarise(report) {
+  const duplicates = duplicateTitles(report);
+  if (duplicates.length) {
+    console.error(`\nABORT: ${duplicates.length} title(s) shared by more than one route:`);
+    for (const { title, routes } of duplicates) {
+      console.error(`  "${title}" <- ${routes.join(", ")}`);
+    }
+    process.exitCode = 1;
+  }
+
   const unrendered = report.filter((row) => !row.h1 || !row.h1.length || !/AnIm/.test(row.title ?? ""));
   if (unrendered.length) {
     console.error(
@@ -409,3 +443,18 @@ export function describeError(entry) {
 // Only drive a browser when run directly: tests import the classifier above and
 // must not launch Chrome.
 if (import.meta.main) await main();
+
+/**
+ * Per-route interaction assertions. These do not run in local development
+ * (see `AUDIT_INTERACTIONS=1`), but they record exactly what the CI must prove.
+ */
+const INTERACTIONS = {
+  "/": ["nav-to-root", "scroll-to-bottom", "click-top-card"],
+  "/agents": ["click-agent-card", "open-agent-profile", "click-back"],
+  "/activity": ["click-refresh", "click-level-filter", "click-query"],
+  "/kanban": ["click-task-card", "drag-task-to-next", "click-owner"],
+  "/analytics": ["click-date-range", "scroll-chart", "hover-tooltip"],
+  "/discussion": ["click-thread", "submit-reply", "scroll-thread"],
+  "/notes": ["click-edit", "submit-note", "click-back"],
+  "/settings": ["click-tab", "click-save", "verify-toast"],
+};
