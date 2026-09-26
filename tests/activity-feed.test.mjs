@@ -133,7 +133,34 @@ test("two transitions of one task at the same instant stay distinct", () => {
   assert.equal(new Set(feed.map((event) => event.id)).size, 2);
 });
 
-test("replies are truncated for the list, so one long answer cannot flood it", () => {
-  const [event] = buildActivityFeed([], [message({ text: "x".repeat(4_000) })]);
-  assert.ok(event.detail.length <= 160, `detail was ${event.detail.length} chars`);
+test("no transcript text reaches the feed, at any length", () => {
+  // Truncation was the old defence, and it was the wrong one: `/api/activity`
+  // is not behind `checkAuth`, so the first 160 characters of an agent reply
+  // were served to anyone who could load the dashboard. The feed records that
+  // a message moved and how big it was, and nothing about what it said.
+  for (const text of ["x".repeat(4_000), "because the vault token rotated", "why?"]) {
+    for (const from of ["you", "agent"]) {
+      for (const failed of [false, true]) {
+        const [event] = buildActivityFeed([], [message({ text, from, failed })]);
+        assert.ok(
+          !event.detail.includes(text.slice(0, 24)),
+          `detail leaked transcript text: ${event.detail.slice(0, 60)}`,
+        );
+        assert.ok(!event.title.includes(text), "title leaked transcript text");
+      }
+    }
+  }
+});
+
+test("a chat row still says what happened, and how big it was", () => {
+  const [reply] = buildActivityFeed([], [message({ text: "done", from: "agent" })]);
+  assert.match(reply.detail, /^reply/);
+  assert.match(reply.detail, /4 chars/);
+  const [asked] = buildActivityFeed([], [message({ text: "why?", from: "you" })]);
+  assert.match(asked.detail, /^question/);
+  const [failed] = buildActivityFeed(
+    [],
+    [message({ text: "Delivery failed: timeout", failed: true })],
+  );
+  assert.equal(failed.detail, "delivery failed");
 });

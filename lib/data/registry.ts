@@ -1,4 +1,6 @@
 import { readFileSync } from "node:fs";
+
+import type { MeshLink } from "@/lib/types";
 import path from "node:path";
 
 /**
@@ -49,6 +51,24 @@ export function readRegistry(): Registry {
  * one. `null` is a real answer: probing an unassigned port would report a
  * connection failure that looks like an outage.
  */
+/**
+ * The reporting hierarchy, as the graph's edges.
+ *
+ * `reports_to` is the one relationship the registry states outright, so it is
+ * the one thing that can honestly be drawn. Measured A2A traffic is not here:
+ * the host collector reads `a2a_agents` and then keeps only a count of each
+ * agent's peers, so the identities are discarded upstream of this code. See
+ * `docs/SERVER-DEFERRED.md`; extending the collector is a host change.
+ */
+export function readHierarchy(): MeshLink[] {
+  return readRegistry()
+    .agents.flatMap((agent) =>
+      agent.reports_to && agent.reports_to !== agent.id
+        ? [{ source: agent.id, target: agent.reports_to, kind: "reports-to" as const }]
+        : [],
+    );
+}
+
 export function portForProfile(profile: string): number | null {
   const agent = readRegistry().agents.find((a) => a.id === profile);
   const port = agent?.port;

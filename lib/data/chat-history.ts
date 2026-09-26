@@ -31,6 +31,14 @@ export const MAX_HISTORY_CHARS = 2_500;
 export const MAX_TURN_CHARS = 600;
 
 const HEADER = "Earlier in this conversation (most recent last):";
+/**
+ * What the framing costs on top of the history itself: the newline after the
+ * header, and the blank line before the question. Hardcoding 32 undercounted
+ * this by 19, which let a prompt that filled the budget exactly come out 19
+ * characters over the wire limit — a 400 from `chatWithProfile` for a question
+ * that would otherwise have fit.
+ */
+const FRAMING_OVERHEAD = HEADER.length + 3;
 
 function turnText(message: StoredMessage): string | null {
   if (message.failed) return null;
@@ -49,9 +57,9 @@ export function formatHistoryPrompt(history: StoredMessage[], question: string):
   const asked = question.trim();
   if (!asked) return asked;
 
-  // A question alone plus the room the framing needs, so a near-limit question
-  // still succeeds with no history rather than failing.
-  let budget = Math.min(MAX_HISTORY_CHARS, MAX_PROMPT_CHARS - asked.length - 32);
+  // A question alone plus the room the framing actually needs, so a near-limit
+  // question still succeeds with no history rather than failing.
+  let budget = Math.min(MAX_HISTORY_CHARS, MAX_PROMPT_CHARS - asked.length - FRAMING_OVERHEAD);
   if (budget <= 0) return asked;
 
   const lines: string[] = [];

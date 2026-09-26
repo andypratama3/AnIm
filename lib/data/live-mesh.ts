@@ -1,5 +1,6 @@
 import { getRemoteInventory, type RemoteAgent, type RemoteInventory } from "@/lib/data/remote";
 import { createSnapshot } from "@/lib/data/engine";
+import { readHierarchy } from "@/lib/data/registry";
 import { PROFILES } from "@/lib/data/profiles";
 import type { Agent, AgentStatus, MeshSnapshot, Series } from "@/lib/types";
 
@@ -118,7 +119,7 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
     return {
       mode: "simulated",
       reason: remote.reason,
-      snapshot: createSnapshot(now, "simulated"),
+      snapshot: createSnapshot(now, "simulated", readHierarchy()),
     };
   }
 
@@ -137,6 +138,7 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
     generatedAt: now,
     source: "live",
     agents,
+    hierarchy: readHierarchy(),
     series: syntheticSeries(now),
     heat: heatFromInventory(agents),
     totals: {

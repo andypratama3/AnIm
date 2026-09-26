@@ -3,11 +3,10 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useConsole } from "@/components/providers/console-provider";
-import { MESH_LINKS } from "@/lib/data/profiles";
 import { STATUS_COLOR, AgentGlyph } from "@/components/dashboard/agent-glyph";
 import { Badge } from "@/components/ui/badge";
 import { formatMs, formatPercent, formatPort } from "@/lib/format";
-import type { Agent } from "@/lib/types";
+import type { Agent, MeshLink } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { hottestAgent, meanLatency } from "@/lib/data/mesh-metrics";
 import {
@@ -20,7 +19,25 @@ import {
   RADIUS,
 } from "@/lib/data/mesh-layout";
 
-export function MeshGraph({ agents, className }: { agents: Agent[]; className?: string }) {
+/**
+ * The ring draws reporting lines from `agents/registry.json`, not traffic.
+ *
+ * Edges used to be a complete graph of the seven seed profiles with `strength`
+ * and `latency` derived from arithmetic on the port number: the line width came
+ * from one and an animated overlay marked the other as "hot", so a fabricated
+ * number decided how loud a link looked. Both are gone. What remains is a flat
+ * line per reporting relationship, because that is the one relationship anyone
+ * actually knows.
+ */
+export function MeshGraph({
+  agents,
+  links: hierarchy,
+  className,
+}: {
+  agents: Agent[];
+  links: MeshLink[];
+  className?: string;
+}) {
   const { setFocusAgent, focusAgent } = useConsole();
   const [hovered, setHovered] = useState<string | null>(null);
 
@@ -29,7 +46,7 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
   // drawing the active subset is what packed 26 nodes into a space that could
   // hold a handful.
   const visible = useMemo(() => activeAgents(agents), [agents]);
-  const links = useMemo(() => visibleLinks(MESH_LINKS, agents), [agents]);
+  const links = useMemo(() => visibleLinks(hierarchy, agents), [hierarchy, agents]);
 
   const positions = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>();
@@ -87,46 +104,26 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
         />
         <circle cx={CENTER} cy={CENTER} r={RADIUS - 62} fill="none" stroke="var(--hairline)" />
 
-        {links.map((link, index) => {
+        {links.map((link) => {
           const from = positions.get(link.source);
           const to = positions.get(link.target);
           if (!from || !to) return null;
           const related = !active || active === link.source || active === link.target;
-          const hot = link.strength > 0.78;
 
           return (
             <g key={`${link.source}-${link.target}`} opacity={related ? 1 : 0.12}>
+              {/* Dashed rather than solid, because this is a declared reporting
+                  line and not a measured flow. The animated overlay that used to
+                  ride the "hot" links implied traffic, from an invented number. */}
               <path
-                id={`edge-${index}`}
                 d={`M ${from.x} ${from.y} Q ${CENTER} ${CENTER} ${to.x} ${to.y}`}
                 fill="none"
                 stroke="var(--brand)"
                 strokeOpacity={active ? 0.5 : 0.22}
-                strokeWidth={link.strength * 1.9}
+                strokeWidth={1.4}
                 strokeLinecap="round"
+                strokeDasharray="5 7"
               />
-              {hot ? (
-                <>
-                  <path
-                    d={`M ${from.x} ${from.y} Q ${CENTER} ${CENTER} ${to.x} ${to.y}`}
-                    fill="none"
-                    stroke="var(--brand-2)"
-                    strokeWidth={1.4}
-                    strokeLinecap="round"
-                    strokeDasharray="6 26"
-                    style={{ animation: "var(--animate-dash-flow)" }}
-                  />
-                  <circle r={2.6} fill="var(--brand-2)">
-                    <animateMotion
-                      dur={`${4.2 + (index % 5) * 0.6}s`}
-                      repeatCount="indefinite"
-                      begin={`${(index % 7) * 0.5}s`}
-                    >
-                      <mpath href={`#edge-${index}`} />
-                    </animateMotion>
-                  </circle>
-                </>
-              ) : null}
             </g>
           );
         })}
@@ -230,7 +227,13 @@ export function MeshGraph({ agents, className }: { agents: Agent[]; className?: 
   );
 }
 
-export function MeshLegend({ agents }: { agents: Agent[] }) {
+export function MeshLegend({
+  agents,
+  links: hierarchy,
+}: {
+  agents: Agent[];
+  links: MeshLink[];
+}) {
   // A collector that never reports load yields `null` for every agent, and
   // sorting those alone would still hand back the first profile. That badge
   // would read "hottest: frontend · —" and name a peak nobody measured, so the
@@ -241,7 +244,7 @@ export function MeshLegend({ agents }: { agents: Agent[] }) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Badge tone="brand">{visibleLinks(MESH_LINKS, agents).length} links</Badge>
+      <Badge tone="brand">{visibleLinks(hierarchy, agents).length} reporting lines</Badge>
       <Badge tone="neutral">
         {shown.length} of {agents.length} active
       </Badge>

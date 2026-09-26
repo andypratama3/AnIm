@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { readFileSync } from "node:fs";
+import { test, describe } from "node:test";
 import { readFile } from "node:fs/promises";
 
 import {
@@ -21,7 +22,16 @@ import {
   SIZE,
   visibleLinks,
 } from "@/lib/data/mesh-layout";
-import { MESH_LINKS, PROFILES } from "@/lib/data/profiles";
+import { PROFILES } from "@/lib/data/profiles";
+import { readHierarchy, readRegistry } from "@/lib/data/registry";
+
+/**
+ * The real reporting hierarchy, not a fixture invented for this file. The edge
+ * set used to be a complete graph of the seven seed profiles with `strength`
+ * and `latency` derived from arithmetic on port numbers; reading the registry
+ * instead means these tests exercise the same data the graph draws.
+ */
+const LINKS = readHierarchy();
 
 function agent(id, status) {
   return { id, name: id, port: 9900, role: "x", status, load: 10, latency: 5 };
@@ -82,7 +92,7 @@ test("links to hidden agents are neither drawn nor counted", () => {
     agent("frontend", "online"),
     agent("hermes-operator", "offline"),
   ];
-  const shown = visibleLinks(MESH_LINKS, agents);
+  const shown = visibleLinks(LINKS, agents);
   const ids = new Set(agents.filter(isActive).map((a) => a.id));
   for (const link of shown) {
     assert.ok(ids.has(link.source), `${link.source} must be on the ring`);
@@ -92,7 +102,7 @@ test("links to hidden agents are neither drawn nor counted", () => {
   // it never invents or reorders.
   for (const link of shown) {
     assert.ok(
-      MESH_LINKS.includes(link),
+      LINKS.includes(link),
       "visible links must be the same objects the chart draws from",
     );
   }
@@ -105,20 +115,20 @@ test("dropping a running agent removes its links from the header count", () => {
   const victim = PROFILES[PROFILES.length - 1].id;
   const oneDown = all.map((a) => (a.id === victim ? agent(a.id, "offline") : a));
   assert.ok(
-    visibleLinks(MESH_LINKS, oneDown).length < visibleLinks(MESH_LINKS, all).length,
+    visibleLinks(LINKS, oneDown).length < visibleLinks(LINKS, all).length,
     "an offline node must cost the header a link, or the badge overstates the mesh",
   );
 });
 
 test("no link can outlive both of its endpoints", () => {
   const allOffline = PROFILES.map((p) => agent(p.id, "offline"));
-  assert.equal(visibleLinks(MESH_LINKS, allOffline).length, 0);
+  assert.equal(visibleLinks(LINKS, allOffline).length, 0);
   assert.equal(activeAgents(allOffline).length, 0);
 });
 
 test("the component draws and counts from the same filtered list", async () => {
   // `visibleLinks` passing in a unit test says nothing about whether the
-  // component calls it. Reverting the badge to MESH_LINKS.length keeps every
+  // component calls it. Hardcoding the count keeps every
   // test in this file green while the header overstates the mesh, so the
   // wiring itself is what has to be asserted.
   const file = await readFile(
@@ -131,13 +141,20 @@ test("the component draws and counts from the same filtered list", async () => {
   const start = file.indexOf("export function MeshGraph");
   const source = file.slice(start, file.indexOf("\nexport function", start + 1));
   assert.ok(start > 0, "MeshGraph must exist in this file");
+  // The badge lives in MeshLegend, in this same file.
+  const legendStart = file.indexOf("export function MeshLegend");
+  const legend = file.slice(legendStart);
 
-  // Links: drawn from the filtered list, never straight off the constant.
-  assert.ok(!/\{\s*MESH_LINKS\.map\(/.test(source), "must not draw MESH_LINKS raw");
-  // Header badge: counted, not assumed.
-  assert.ok(
-    !/\{MESH_LINKS\.length\}\s*links/.test(source),
-    "the links badge must count what is drawn, not the source constant",
+  // Links: drawn from the filtered prop, not from a module constant. The
+  // component no longer imports one at all, so asserting the absence of a name
+  // would prove nothing — what matters is that it filters what it is handed.
+  assert.match(source, /visibleLinks\(hierarchy, agents\)/);
+  // Header badge: counted from the same filtered list, and named for what the
+  // lines are. "links" beside a reporting hierarchy reads as traffic.
+  assert.match(
+    legend,
+    /visibleLinks\(hierarchy, agents\)\.length} reporting lines/,
+    "the count must come from the filtered list and be named for what it is",
   );
   // Bubbles: the ring holds active agents only.
   assert.ok(
@@ -199,4 +216,78 @@ test("label fonts are not scaled below what the old square rendered", () => {
   assert.ok(NAME_FONT >= 10, "name labels stay at least as legible as before");
   assert.ok(PORT_FONT >= 9, "port labels stay at least as legible as before");
   assert.ok(GLYPH_FONT >= 10, "glyphs stay at least as legible as before");
+});
+
+/**
+ * The edges were a complete graph of the seven seed profiles, with `strength`
+ * from `(i * 7 + port) % 11` deciding the line width and `latency` from
+ * `(port + port) % 17` deciding an animated "hot" overlay. Both were invented,
+ * and the overlay was the part that actually read as live A2A traffic. The
+ * graph now draws the registry's `reports_to` and nothing else.
+ */
+describe("the graph draws a real hierarchy, not invented traffic", () => {
+  test("every edge is a reports_to line from the registry", () => {
+    const registry = readRegistry();
+    const declared = new Set(
+      registry.agents.flatMap((agent) =>
+        agent.reports_to ? [`${agent.id}->${agent.reports_to}`] : [],
+      ),
+    );
+    assert.ok(declared.size > 0, "the registry must state a hierarchy at all");
+    for (const link of LINKS) {
+      assert.ok(
+        declared.has(`${link.source}->${link.target}`),
+        `${link.source}->${link.target} is not a declared reporting line`,
+      );
+      assert.equal(link.kind, "reports-to");
+    }
+  });
+
+  test("an edge carries no number nobody measured", () => {
+    const types = readFileSync(new URL("../lib/types.ts", import.meta.url), "utf8");
+    // The block only, not the rest of the file: `Agent` below it has a real
+    // `latency` (the collector measures hop time), and slicing to EOF would
+    // make this test fail on an honest field.
+    const start = types.indexOf("export type MeshLink");
+    const block = types.slice(start, types.indexOf("};", start) + 2);
+    // Comments are stripped first: the field's own doc comment names what it
+    // replaced, and matching prose would fail for the wrong reason.
+    const code = block.replace(/\/\*[\s\S]*?\*\//g, "");
+    assert.doesNotMatch(code, /strength/, "line width must not come from an invented number");
+    assert.doesNotMatch(code, /latency/, "a link has no measured latency of its own");
+    assert.match(code, /kind: "reports-to"/, "and it says which kind of line it is");
+  });
+
+  test("nothing is drawn from a per-link measurement", async () => {
+    const file = await readFile(
+      new URL("../components/dashboard/mesh-graph.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(file, /link\.strength/, "must not size a line from a fabricated strength");
+    assert.doesNotMatch(file, /link\.latency/, "must not label a line with a fabricated latency");
+    // The animated overlay is what made a fabricated edge look like live flow.
+    assert.doesNotMatch(
+      file,
+      /animateMotion|animate-dash-flow/,
+      "a dashed flow animation on an unmeasured edge is a traffic claim",
+    );
+  });
+
+  test("the link source is the registry, not the seed profiles", async () => {
+    const profiles = await readFile(
+      new URL("../lib/data/profiles.ts", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(
+      profiles,
+      /MESH_LINKS/,
+      "the complete graph of seed profiles is the thing being removed",
+    );
+  });
+
+  test("a self-reporting agent does not draw a loop to itself", () => {
+    for (const link of LINKS) {
+      assert.notEqual(link.source, link.target);
+    }
+  });
 });

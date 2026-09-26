@@ -129,3 +129,80 @@ describe("an empty question is never dressed up", () => {
     assert.equal(formatHistoryPrompt([msg({})], "   "), "");
   });
 });
+
+describe("the prompt never exceeds the wire limit", () => {
+  /**
+   * The previous boundary test used a 3,800-char question, which left 168
+   * characters of budget and therefore no room for a single trimmed turn: it
+   * asserted a property of the bare question and passed whether or not the
+   * history budget was right. The dangerous range is narrower and in the
+   * middle, where the history cap actually engages and the framing overhead is
+   * therefore paid on top of a full budget.
+   */
+  for (const size of [1_449, 1_500, 2_000, 2_500, 3_000, 3_500, 3_948]) {
+    test(`a ${size}-char question plus full history still fits`, () => {
+      const history = Array.from({ length: 8 }, (_, i) => ({
+        id: `m${i}`,
+        from: i % 2 === 0 ? "you" : "frontend",
+        profile: "frontend",
+        text: "h".repeat(900),
+        ts: i,
+      }));
+      const prompt = formatHistoryPrompt(history, "q".repeat(size));
+      assert.ok(
+        prompt.length <= MAX_PROMPT_CHARS,
+        `prompt was ${prompt.length}, limit is ${MAX_PROMPT_CHARS}`,
+      );
+      assert.ok(prompt.endsWith("q".repeat(size)), "the question is never truncated");
+    });
+  }
+
+  test("the history is actually carried in that range, so the check is not vacuous", () => {
+    const history = Array.from({ length: 8 }, (_, i) => ({
+      id: `m${i}`,
+      from: "you",
+      profile: "frontend",
+      text: "h".repeat(900),
+      ts: i,
+    }));
+    const prompt = formatHistoryPrompt(history, "q".repeat(2_000));
+    assert.ok(
+      historyTurnCount(prompt) > 0,
+      "a 2,000-char question should still carry some history",
+    );
+  });
+
+  /**
+   * The precise regression. A 19-character error in the overhead estimate can
+   * never change how *many* turns fit, because the smallest turn costs far more
+   * than 19 — which is why the size sweep above passes either way. It changes
+   * the answer only when one turn lands inside that 19-character window, and
+   * the turn must be short enough not to be trimmed, so the window has to be
+   * reached with a long question.
+   *
+   * Question 3,350 leaves 599 characters under a correct overhead and 618
+   * under the old 32-char guess. A 601-character line needs 603: excluded by
+   * the correct budget, admitted by the old one, which then built a 4,002
+   * character prompt against a 4,000 limit.
+   */
+  test("a turn inside the 19-character overhead gap is left out, not sent", () => {
+    const question = "q".repeat(3_350);
+    const turn = 596; // becomes "You: " + 596 chars = 601, under MAX_TURN_CHARS
+    const prompt = formatHistoryPrompt(
+      [{ id: "m", from: "you", profile: "f", text: "h".repeat(turn), ts: 1 }],
+      question,
+    );
+    assert.equal(historyTurnCount(prompt), 0, "the turn does not fit and must be dropped");
+    assert.equal(prompt, question, "so the bare question goes out, unchanged");
+    assert.ok(prompt.length <= MAX_PROMPT_CHARS);
+
+    // And the other side of the window: one character less of question, and
+    // the same turn does fit, so the limit is a ceiling and not a cliff.
+    const fits = formatHistoryPrompt(
+      [{ id: "m", from: "you", profile: "f", text: "h".repeat(turn), ts: 1 }],
+      "q".repeat(3_340),
+    );
+    assert.equal(historyTurnCount(fits), 1, "a turn this size belongs in the prompt");
+    assert.ok(fits.length <= MAX_PROMPT_CHARS, `prompt was ${fits.length}`);
+  });
+});

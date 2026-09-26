@@ -3,6 +3,7 @@ import type {
   Agent,
   AgentStatus,
   HeatCell,
+  MeshLink,
   MeshSnapshot,
   Series,
 } from "@/lib/types";
@@ -142,9 +143,16 @@ function buildHeat(tick: number, agents: Agent[]): HeatCell[] {
 
 
 
+/**
+ * `hierarchy` is passed in rather than read here: this module is imported by a
+ * client component, so it must not reach for `node:fs`. `source.ts` supplies the
+ * registry's reporting lines, and an empty array means "no hierarchy known",
+ * which the graph states rather than papering over with a complete graph.
+ */
 export function createSnapshot(
   now: number = Date.now(),
   source: MeshSnapshot["source"] = "simulated",
+  hierarchy: MeshLink[] = [],
 ): MeshSnapshot {
   const tick = Math.floor(now / 4_000);
   const agents = PROFILES.map((profile) => buildAgent(profile, tick, now));
@@ -167,6 +175,7 @@ export function createSnapshot(
     agents,
     series,
     heat,
+    hierarchy,
     totals: {
       online,
       busy,

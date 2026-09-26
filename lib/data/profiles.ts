@@ -1,4 +1,4 @@
-import type { Agent, MeshLink } from "@/lib/types";
+import type { Agent } from "@/lib/types";
 
 export const MODEL_DEFAULT = "thinkingmachines/inkling:free";
 export const PROVIDER = "openrouter";
@@ -81,15 +81,6 @@ export const PROFILES: ProfileDef[] = [
     baseLoad: 81,
   },
 ];
-
-export const MESH_LINKS: MeshLink[] = PROFILES.flatMap((p, i) =>
-  PROFILES.filter((q) => q.id !== p.id && q.port > p.port).map((q) => ({
-    source: p.id,
-    target: q.id,
-    strength: 0.4 + (((i * 7 + q.port) % 11) / 11) * 0.6,
-    latency: 4 + (((p.port + q.port) % 17) / 17) * 26,
-  })),
-);
 
 export const STATUS_TONE = {
   online: { label: "Online", color: "var(--ok)", ring: "ok" },

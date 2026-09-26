@@ -60,7 +60,14 @@ function fromMessage(message: StoredMessage): ActivityEvent {
     // agent reply that happened to be short.
     level: message.failed ? "error" : asked ? "info" : "success",
     title: asked ? `question sent to ${message.profile}` : `${message.profile} replied`,
-    detail: message.failed ? message.text : message.text.slice(0, 160),
+    // Deliberately not the text. Transcripts hold real agent output, which is
+    // why every `/api/agent-chat` method sits behind `checkAuth`; this route
+    // does not, so copying message bodies into it would publish them to
+    // anyone who can load the dashboard. Size is enough to tell a delivery
+    // from a stub, and the text is one click away in the chat view.
+    detail: message.failed
+      ? "delivery failed"
+      : `${asked ? "question" : "reply"} · ${message.text.length} chars`,
     durationMs: message.elapsedMs,
   };
 }

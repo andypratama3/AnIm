@@ -72,6 +72,13 @@ export type MeshSnapshot = {
   totals: MeshTotals;
   series: Series;
   heat: HeatCell[];
+  /**
+   * Reporting structure from `agents/registry.json`, so the graph draws a real
+   * hierarchy instead of a complete graph of the seed profiles. Absent is not
+   * possible: the registry ships with the app, so a missing hierarchy means the
+   * file is unreadable and that is worth failing on rather than drawing around.
+   */
+  hierarchy: MeshLink[];
 };
 
 export type Series = {
@@ -139,9 +146,20 @@ export type Note = {
   pinned?: boolean;
 };
 
+/**
+ * A line between two agents.
+ *
+ * This used to carry `strength` and `latency`, both produced by
+ * `(i * 7 + port) % 11` and friends over a complete graph of the seven seed
+ * profiles: invented numbers driving invented edge widths and an animated "hot"
+ * overlay, presented as live A2A traffic. Neither is measured, so neither is
+ * here. What is real is the relationship, and `kind` says which one, so the UI
+ * never has to guess whether a line means traffic or reporting.
+ */
 export type MeshLink = {
+  /** The agent that reports. */
   source: string;
+  /** The agent it reports to. */
   target: string;
-  strength: number;
-  latency: number;
+  kind: "reports-to";
 };
