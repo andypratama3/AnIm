@@ -126,3 +126,48 @@ describe("port rendering is honest in both registers", () => {
     assert.equal(formatPort(0), ":0");
   });
 });
+
+describe("a model the host never reported reads as unmeasured", () => {
+  test("unknown, empty and missing all render the em dash", async () => {
+    const { describeModel } = await import("../lib/format.ts");
+    assert.equal(describeModel("unknown"), "—");
+    assert.equal(describeModel("UNKNOWN"), "—");
+    assert.equal(describeModel("  Unknown "), "—");
+    assert.equal(describeModel(""), "—");
+    assert.equal(describeModel("   "), "—");
+    assert.equal(describeModel(null), "—");
+    assert.equal(describeModel(undefined), "—");
+  });
+
+  test("a real value passes through unchanged", async () => {
+    const { describeModel } = await import("../lib/format.ts");
+    assert.equal(describeModel("thinkingmachines/inkling:free"), "thinkingmachines/inkling:free");
+  });
+
+  test("the live path reports no model, and the roster says so", () => {
+    // The host reports neither model nor provider, and an agent card name is an
+    // identity, not a model. Reading `agentCard.name` into `model` put "Bor" in
+    // a column labelled Model; this pins the honest value.
+    const source = readFileSync(
+      new URL("../lib/data/live-mesh.ts", import.meta.url),
+      "utf8",
+    );
+    // Anchored to the property, not to the word: a prose line about agentCard
+    // names also contains "model:", and matching that is how a test ends up
+    // asserting against a comment.
+    const modelLine = /^\s+model:\s*("[^"]*"),$/m.exec(source);
+    assert.ok(modelLine, "could not find the model field on the live path");
+    assert.equal(modelLine[1], '"unknown"');
+    assert.doesNotMatch(source, /^\s+model:\s*agent\.agentCard\.name/m);
+  });
+
+  test("the drawer renders model and provider through the helper", () => {
+    const text = readFileSync(
+      new URL("../components/dashboard/agent-drawer.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(text, /label="Model" value=\{describeModel\(agent\.model\)\}/);
+    assert.match(text, /label="Provider" value=\{describeModel\(agent\.provider\)\}/);
+    assert.doesNotMatch(text, /label="Model" value=\{agent\.model\}/);
+  });
+});

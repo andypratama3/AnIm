@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableWrap, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { STATUS_COLOR } from "@/components/dashboard/agent-glyph";
+import { MODEL_DEFAULT } from "@/lib/data/profiles";
 import { toast } from "sonner";
 
 type Metric = "health" | "latency" | "load" | "tokens" | "queue";
@@ -303,7 +304,10 @@ export default function AnalyticsPage() {
         </SectionCard>
 
         <div className="space-y-4">
-          <SectionCard title="Mesh composition" description="Where the health score comes from.">
+          <SectionCard
+            title="Mesh composition"
+            description="Roster composition, and the share of peers the inventory round trip reached. That share is unmeasured on the live path."
+          >
             <div className="flex items-center justify-around gap-3">
               <RadialGauge
                 value={totals.successRate}
@@ -324,7 +328,14 @@ export default function AnalyticsPage() {
             </div>
             <div className="mt-4 flex items-center gap-2 border-t border-hairline pt-3 text-[11px] text-ink-subtle">
               <ShieldCheckIcon size={13} />
-              All peers share <span className="font-mono text-ink">thinkingmachines/inkling:free</span>
+              {data?.source === "live" ? (
+                <span>The mesh does not report a resolved model per peer, so none is claimed here.</span>
+              ) : (
+                <span>
+                  Simulated snapshot — peers shown here stand in for{" "}
+                  <span className="font-mono text-ink">{MODEL_DEFAULT}</span> and do not reflect live traffic.
+                </span>
+              )}
             </div>
           </SectionCard>
 

@@ -9,10 +9,10 @@ that keeps the two apart.
 | Risk | Mitigation |
 |---|---|
 | A token is committed and pushed to public GitHub | `scripts/secret-scan.sh` blocks the commit; CI fails the push |
-| The dashboard leaks a token by serving agent files | Filename allowlist (`*.md` only) in the bridge; `.env`/`auth.json` are never readable |
+| The dashboard leaks agent content by serving its files | The collector stats the `*.md` allowlist and returns presence and size only; no body is read or emitted |
 | A token is pasted into a doc or commit message | Scanner runs on staged content, not just the worktree |
 | Someone copies live agent config into the repo | `.gitignore` blocks `auth.json`, `*.pem`, `*.key`, `*.env*`, runtime state |
-| A later change silently widens the bridge allowlist | Rule 2 in `AGENTS.md`; the allowlist is a single exported constant |
+| A later change starts returning file bodies | `DOC_ALLOWLIST` in `scripts/mesh-inventory.py` is a stat list; the collector docstring states it is not a read list |
 | The bridge is pointed at a shell with interpolated input | `execFile` argv arrays only; the SSH branch keeps `BatchMode=yes` |
 
 ## Forbidden, always
@@ -46,12 +46,13 @@ npm run scan:secrets          # full worktree scan
 scripts/secret-scan.sh        # staged only (what pre-commit runs)
 scripts/secret-scan.sh --all  # tracked + untracked, non-ignored
 ./scripts/install-hooks.sh    # install .git/hooks/pre-commit
-npm run verify                # scan + typecheck + lint + build
+npm run verify                # scan + typecheck + lint + tests + build
 ```
 
 `.github/workflows/secret-guard.yml` runs on every push and pull request. It
 performs two checks: the pattern scan, and a filename check that fails if any
 credential-shaped file is tracked at all.
+
 ## The mesh bridge
 
 `lib/data/exec-host.ts` is the only code path that decides where mesh calls run.
@@ -69,10 +70,13 @@ Its contract:
   host that does not hold the mesh) uses the fixed target from
   `ANIM_SSH_HOST`. It keeps `BatchMode=yes`, so a missing key fails closed
   instead of blocking on a prompt.
-- **Filename allowlist.** Only `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `TOOLS.md`,
-  `USER.md`, `HEARTBEAT.md`, `constitution.md` and `obsidian/*.md` are fetchable.
-  A requested name is rejected before any call if it contains `/`, `..`, or is
-  not on the list.
+- **No agent file body is ever returned.** `scripts/mesh-inventory.py` holds a
+  `DOC_ALLOWLIST` — `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `TOOLS.md`,
+  `USER.md`, `HEARTBEAT.md`, `constitution.md`, plus a count of
+  `obsidian/*.md` — and it **stats** each one, reporting presence and byte size
+  only. Contents are not read, not parsed, and not emitted, so there is no
+  request a caller could make to obtain one. `.env` and `auth.json` are not on
+  the list and are never opened.
 - **Bounded.** Every call has a timeout, an output size cap, and the local branch
   pins `HOME` so profile paths resolve identically under any starting account.
 - **No shell.** Calls go through `execFile` with an argv array. The prompt is one

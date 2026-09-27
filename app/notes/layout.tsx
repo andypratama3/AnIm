@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Vault",
-  description: "Markdown notes and decision records stored in your local vault.",
+  title: "Notes",
+  description:
+    "Working notes for this console. Seeded in-process: not the Hermes vault and not written to disk.",
 };
 
 export default function RouteLayout({ children }: { children: React.ReactNode }) {

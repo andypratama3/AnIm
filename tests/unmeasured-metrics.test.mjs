@@ -178,6 +178,7 @@ const [liveMeshRaw, sparklineRaw, engineRaw] = await Promise.all([
 
 const liveMesh = stripComments(liveMeshRaw);
 const sparkline = stripComments(sparklineRaw);
+const engine = stripComments(engineRaw);
 
 describe("the live path fabricates no series, heat or score", () => {
   test("live mode builds an empty series, never a generated one", () => {
@@ -216,6 +217,16 @@ describe("the live path fabricates no series, heat or score", () => {
   test("the simulated fallback is still reachable and still labelled", () => {
     assert.match(liveMesh, /mode: "simulated"/, "the fallback must remain");
     assert.match(liveMesh, /synthetic: false/, "live series are not synthetic");
+  });
+
+  test("the mesh score is null when nothing was measured", () => {
+    // `meshHealthScore` is the one consumer that could have papered over a null
+    // `health` by treating it as 0 and rendering a confident-looking meter. It
+    // averages only the measured agents and returns null when there are none.
+    const fn = engine.slice(engine.indexOf("export function meshHealthScore"));
+    assert.match(fn, /typeof h === "number"/, "unmeasured agents must be filtered out");
+    assert.match(fn, /measured\.length === 0\) return null;/, "no measurement, no score");
+    assert.doesNotMatch(fn, /\?\? 0|\|\| 0/, "a null health must never be coerced to 0");
   });
 });
 

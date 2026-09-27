@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Read-only mesh inventory for the AnIm dashboard.
 
-Invoked over SSH by lib/data/remote.ts. Prints one JSON object on stdout.
+Invoked by lib/data/remote.ts, over whichever transport lib/data/exec-host
+picks: directly on the mesh host in production, over SSH from a laptop.
+Prints one JSON object on stdout.
 
 This script is STRICTLY READ-ONLY:
   * it opens no file for writing
@@ -10,7 +12,9 @@ This script is STRICTLY READ-ONLY:
   * it only inspects hermes profile directories, config.yaml public fields,
     gateway process state, and listening A2A ports
 
-Allowlisted document reads are limited to *.md inside a profile directory.
+DOC_ALLOWLIST is a *presence* allowlist, not a read allowlist: it stats those
+files and reports their size. No document body is ever read or returned, so
+there is no path by which agent content reaches the browser.
 """
 import json
 import os

@@ -72,8 +72,9 @@ This repo is pushed to a public GitHub remote. Nothing secret may enter it.
 - No fake interactivity: every control does something real or is removed.
 - Real data first. Synthetic fallback is a degraded mode, not the default, and the
   UI must label which mode it is in.
-- Every route needs a real `<h1>`, a unique document title, and zero horizontal
-  overflow at 1512px and 390px.
+- Every route needs exactly one `<h1>`, a unique document title, and zero
+  horizontal overflow at 1512px and 390px. `npm run audit:ui` enforces all
+  three against a served app.
 - `npx tsc --noEmit` clean, `npm run lint` zero errors, `npm run build` green
   before any change is considered done.
 

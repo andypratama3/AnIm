@@ -16,7 +16,17 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BASE = process.env.BASE_URL ?? "http://localhost:3000";
+/**
+ * `127.0.0.1`, not `localhost`.
+ *
+ * `npm run dev` and `npm run start` both pin `-H 127.0.0.1`, so that is the
+ * address this project is actually served on. `localhost` can resolve to `::1`
+ * first, and anything else bound to port 3000 over IPv6 will answer instead —
+ * during this audit it was an unrelated project in another directory, and the
+ * run measured that app's 404 page before anyone noticed the routes "had no h1".
+ * An audit has to be pointed at one known server, so name the address.
+ */
+const BASE = process.env.BASE_URL ?? "http://127.0.0.1:3000";
 const OUT = process.env.AUDIT_OUT ?? "/tmp/anim-audit";
 const PORT = Number(process.env.CDP_PORT ?? 9333);
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +54,45 @@ function resolveChrome() {
 const CHROME = resolveChrome();
 
 const BRIDGE_PATH = "/api/mesh-live";
+
+/** How long a page gets to paint an <h1> before the audit gives up waiting. */
+export const READY_TIMEOUT_MS = Number(process.env.AUDIT_READY_TIMEOUT_MS ?? 10_000);
+
+/**
+ * Poll until the page has rendered its heading, or until the timeout.
+ *
+ * The point is to replace a fixed sleep with a condition. A page that has not
+ * painted yet is not a page with an empty `<h1>`, and treating the two as the
+ * same turned a slow first request into an aborted run.
+ *
+ * Returns `{ ready, waitedMs, heading }`. `ready: false` means the page never
+ * showed a heading within `timeoutMs`; the caller measures it anyway so the
+ * defect surfaces instead of being swallowed by the wait.
+ *
+ * `probe` and `delay` are injected so this is testable without a browser.
+ */
+export async function waitForHeading(
+  probe,
+  { timeoutMs = READY_TIMEOUT_MS, intervalMs = 150, delay = (ms) => new Promise((r) => setTimeout(r, ms)) } = {},
+) {
+  const started = Date.now();
+  for (;;) {
+    let heading = "";
+    try {
+      heading = (await probe()) || "";
+    } catch {
+      // A navigation in flight can make an evaluation throw. That is not the
+      // page failing to render; keep polling until the deadline decides it.
+      heading = "";
+    }
+    if (heading.trim()) {
+      return { ready: true, waitedMs: Date.now() - started, heading: heading.trim() };
+    }
+    const waitedMs = Date.now() - started;
+    if (waitedMs >= timeoutMs) return { ready: false, waitedMs, heading: "" };
+    await delay(Math.min(intervalMs, timeoutMs - waitedMs));
+  }
+}
 
 /**
  * Is this console error the deployment being deliberately degraded?
@@ -142,6 +191,7 @@ export async function signIn(base, token) {
 const SESSION_COOKIE = "anim_session";
 
 const ROUTES = ["/", "/agents", "/activity", "/kanban", "/analytics", "/discussion", "/notes", "/settings"];
+export { ROUTES };
 const VIEWPORTS = [
   { name: "desktop", width: 1512, height: 950 },
   { name: "mobile", width: 390, height: 844 },
@@ -387,7 +437,27 @@ async function main() {
         sessionId,
       );
       void status;
-      await sleep(3200);
+
+      // Wait for the page to paint its heading before measuring it.
+      //
+      // This used to be a flat `sleep(3200)`, which is a guess: on a cold server
+      // the first route can still be compiling or hydrating after 3.2s, and the
+      // probe then recorded an empty <h1> and aborted the whole run on a page that
+      // rendered fine a second later. Polling for the heading makes the wait
+      // proportional to the page instead of to the clock. A page that genuinely
+      // never renders one still gets probed, and still fails — the readiness wait
+      // cannot turn a real failure into a pass.
+      const ready = await waitForHeading(async () => {
+        const { result } = await browser.send(
+          "Runtime.evaluate",
+          { expression: "document.querySelector('h1')?.textContent?.trim() || ''", returnByValue: true },
+          sessionId,
+        );
+        return result?.value || "";
+      });
+      // Settle after the heading appears, so entry animations have finished before
+      // anything is measured. Kept close to the old flat sleep's intent.
+      await sleep(ready.ready ? 2000 : 0);
 
       const { result } = await browser.send(
         "Runtime.evaluate",
@@ -434,6 +504,8 @@ async function main() {
         consoleErrors: real,
         expectedErrors: expected,
         shot,
+        readyMs: ready.waitedMs,
+        ready: ready.ready,
       });
 
       browser.listeners = browser.listeners.filter((fn) => fn !== onEvent);
@@ -484,7 +556,18 @@ function duplicateTitles(report) {
     .map(([title, routes]) => ({ title, routes: routes.sort() }));
 }
 
-/** The interaction spec: only executed under CI (`AUDIT_INTERACTIONS=1`). */
+/**
+ * The interaction spec: a written record of what each route must prove, per
+ * route. It is **not** driven by this script — the CDP calls that would click
+ * and drag these controls do not exist yet, so nothing here runs them and
+ * `AUDIT_INTERACTIONS` is read by nothing. Reporting it as "23 assertions run
+ * in CI" would be the same class of defect the rest of this repo exists to
+ * prevent: a claim on a badge that no code backs.
+ *
+ * Every name below therefore has to describe a control that really exists, and
+ * `tests/ui-audit-bridge.test.mjs` fails if a route is added to `ROUTES` without
+ * an entry here, or an entry names a route that is not audited.
+ */
 const INTERACTIONS = {
   "/": ["nav-to-root", "scroll-to-bottom", "click-top-card"],
   "/agents": ["click-agent-card", "open-agent-profile", "click-back"],
@@ -492,9 +575,10 @@ const INTERACTIONS = {
   "/kanban": ["click-task-card", "drag-task-to-next", "click-owner"],
   "/analytics": ["click-date-range", "scroll-chart", "hover-tooltip"],
   "/discussion": ["click-thread", "submit-reply", "scroll-thread"],
-  "/notes": ["click-edit", "submit-note", "click-back"],
+  "/notes": ["search-notes", "filter-folder", "toggle-focus", "copy-markdown"],
   "/settings": ["click-tab", "click-save", "verify-toast"],
 };
+export { INTERACTIONS };
 
 function summarise(report) {
   const duplicates = duplicateTitles(report);
@@ -507,7 +591,15 @@ function summarise(report) {
   }
 
   const interactionCount = Object.values(INTERACTIONS).flat().length;
-  console.log(`  interaction: ${Object.keys(INTERACTIONS).length} routes, ${interactionCount} assertions (run in CI only)`);
+  console.log(
+    `  interaction spec: ${Object.keys(INTERACTIONS).length} routes, ${interactionCount} controls recorded - NOT executed by this audit`,
+  );
+  if (process.env.AUDIT_INTERACTIONS) {
+    console.log(
+      "  note: AUDIT_INTERACTIONS is set, but no interaction driver exists yet. " +
+        "Layout, title, clipping and console checks are what actually ran.",
+    );
+  }
 
   const unrendered = report.filter((row) => !row.h1 || !row.h1.length || !/AnIm/.test(row.title ?? ""));
   if (unrendered.length) {
@@ -515,9 +607,30 @@ function summarise(report) {
       `\nABORT: ${unrendered.length}/${report.length} checks never rendered the app ` +
         `(title=${unrendered[0].title ?? "none"}). Is ${BASE} serving the app?`,
     );
-    for (const row of unrendered) console.error(`  ${row.viewport} ${row.route} title=${row.title}`);
+    for (const row of unrendered) {
+      console.error(
+        `  ${row.viewport} ${row.route} title=${row.title} readyAfterMs=${row.readyMs ?? "?"}`,
+      );
+    }
     process.exitCode = 1;
   } else {
+    // Exactly one <h1>, not merely at least one. The topbar used to render the
+    // route label as an <h1> next to the page's own, so seven of eight routes
+    // carried two headings with near-identical text, and "an h1 exists" was
+    // satisfied by either. A page has one top-level heading; a second one is a
+    // flattened outline, and it is the kind of defect that only shows up if
+    // something counts them.
+    const multiH1 = report.filter((row) => row.h1.length > 1);
+    if (multiH1.length) {
+      console.error(
+        `\nFAIL: ${multiH1.length}/${report.length} check(s) rendered more than one <h1>:`,
+      );
+      for (const row of multiH1) {
+        console.error(`  ${row.viewport} ${row.route} h1=${row.h1.length} [${row.h1.join(" | ")}]`);
+      }
+      process.exitCode = 1;
+    }
+
     const issues = report.filter(
       (row) => row.overflowX > 0 || row.wide.length || row.clipped.length || row.consoleErrors.length,
     );
@@ -531,6 +644,18 @@ function summarise(report) {
       }
     }
     console.log(`\n${report.length - issues.length}/${report.length} checks clean`);
+    // A route that needed most of the timeout is a page that nearly went
+    // unmeasured. Say so, while the numbers that did land are still readable.
+    const slow = report.filter((row) => (row.readyMs ?? 0) > READY_TIMEOUT_MS / 2);
+    if (slow.length) {
+      console.log(
+        `note: ${slow.length} check(s) took over ${Math.round(READY_TIMEOUT_MS / 2)}ms to render; ` +
+          "a slower host may need AUDIT_READY_TIMEOUT_MS raised.",
+      );
+      for (const row of slow) {
+        console.log(`  ${row.viewport} ${row.route}: ${row.readyMs}ms`);
+      }
+    }
     for (const row of issues) {
       console.log(
         `  FAIL ${row.viewport} ${row.route} ovf=${row.overflowX} wide=${row.wide.length} ` +
@@ -562,11 +687,6 @@ export function describeError(entry) {
   return `${text}${status}${url}`.slice(0, 200);
 }
 
-// Only drive a browser when run directly: tests import the classifier above and
+// Only drive a browser when run directly: tests import the classifiers above and
 // must not launch Chrome.
 if (import.meta.main) await main();
-
-/**
- * Per-route interaction assertions. These do not run in local development
- * (see `AUDIT_INTERACTIONS=1`), but they record exactly what the CI must prove.
- */

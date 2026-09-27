@@ -66,11 +66,13 @@ jobs:
         run: |
           npm run build
           npm run start &
+          # 127.0.0.1, not localhost: `next start` pins that address, and on a
+          # dual-stack runner `localhost` can land on ::1 with nothing there.
           for i in $(seq 1 60); do
-            if curl -fsS -o /dev/null http://localhost:3000/; then break; fi
+            if curl -fsS -o /dev/null http://127.0.0.1:3000/; then break; fi
             sleep 2
           done
-          curl -fsS -o /dev/null http://localhost:3000/
+          curl -fsS -o /dev/null http://127.0.0.1:3000/
 
       - name: Audit routes for overflow, clipping and console errors
         # The script exits non-zero on any real defect, and also aborts loudly if

@@ -108,7 +108,11 @@ export function Topbar({ onOpenMobileNav }: { onOpenMobileNav: () => void }) {
             transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
             className="flex items-center gap-2.5"
           >
-            <h1 className="truncate text-[17px] font-semibold tracking-[-0.03em]">{meta.title}</h1>
+            {/* A <p>, not an <h1>: this is the route label in the chrome, and the
+                page's own PageHeader already carries the route's <h1>. Two <h1>s
+                per page duplicated the same words and flattened the outline, and
+                the audit's "an h1 exists" check was satisfied by either one. */}
+            <p className="truncate text-[17px] font-semibold tracking-[-0.03em]">{meta.title}</p>
             <span className="hidden text-[11px] uppercase tracking-[0.18em] text-ink-subtle sm:inline">
               {meta.sub}
             </span>

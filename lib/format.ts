@@ -39,6 +39,19 @@ export function describePort(port: number | null | undefined): string {
   return typeof port === "number" ? `port ${port}` : "no port assigned";
 }
 
+/**
+ * A model or provider the host never reported, shown as unmeasured.
+ *
+ * The live path sets these to the literal "unknown" because `Agent.model` and
+ * `Agent.provider` are non-nullable strings. An empty cell would read as an
+ * oversight; an em dash reads as what it is, matching every other metric the
+ * host does not export.
+ */
+export function describeModel(value: string | null | undefined): string {
+  const trimmed = value?.trim();
+  return !trimmed || trimmed.toLowerCase() === "unknown" ? NOT_MEASURED : trimmed;
+}
+
 export function formatMs(value: number | null | undefined): string {
   if (value == null) return NOT_MEASURED;
   if (value >= 1000) return `${(value / 1000).toFixed(2)}s`;

@@ -1,9 +1,48 @@
 # Agent Mesh — Specification
 
-Seven agents, one orchestrator, one vault, one console. This document is the
-source of truth for identity, routing, A2A and chat requirements.
+Twenty-six profiles in five departments, one orchestrator, one vault, one
+console. This document is the source of truth for identity, routing, A2A and
+chat requirements.
 
-## Topology
+The authoritative roster is `agents/registry.json` (version 1.0.0), and the
+console reads that file for ports and hierarchy — never a copy of a port table
+in code, which drifted once already (`frontend` was probed on 9907 while the
+registry said 9905; `tests/registry-ports.test.mjs` now fails if that returns).
+
+## Scale: 26 profiles, 7 gateways
+
+| | count | meaning |
+|---|---|---|
+| `state: "existing"` | 7 | profile present, gateway listening, port assigned |
+| `state: "new"` | 19 | profile defined in the registry, no port assigned, gateway not started |
+
+Only the 7 existing profiles carry a port (**9900–9906**). The other 19 report
+`port: null` and the console renders `—`, because a guessed port would report a
+probed agent offline when it was never probed. `9907`–`9925` is **reserved, not
+allocated**: no registry entry claims it, so nothing binds it. Starting those
+gateways is a host decision, not a console change — see
+`docs/SERVER-DEFERRED.md`.
+
+A stopped gateway does not make a profile unusable: `hermes -p <profile>` can
+address a profile whose gateway is not listening.
+
+## Departments
+
+| id | chief | profiles |
+|---|---|---|
+| `office-of-owner` | `agent-secretary` | `default`, `ceo-bor`, `management-research`, `career-agent` |
+| `engineering` | `principal-engineer` | `frontend`, `backend`, `fullstack-engineer`, `ai-engineer`, `devops-engineer`, `security-engineer`, `code-reviewer`, `hermes-operator` |
+| `product-operations` | `agent-operasi-produk` | `qa-engineer`, `dashboard-engineer`, `automation-engineer` |
+| `knowledge-content` | `knowledge-agent` | `social-media`, `content-strategist`, `technical-writer` |
+| `commercial-finance` | `agent-pemasaran` | `agent-penjualan`, `agent-layanan`, `agent-keuangan` |
+
+Ranks in the registry: one `orchestrator`, eight `chief`, seventeen `engineer`.
+Every agent except `default` has a `reports_to`, and the console draws those
+declared lines as a reporting hierarchy — labelled "reporting lines", never
+"links", because `readHierarchy()` reads the committed registry rather than live
+A2A edges (`docs/SERVER-DEFERRED.md`).
+
+## Core topology (the seven with gateways)
 
 ```
                        ┌──────────────┐
@@ -27,7 +66,7 @@ source of truth for identity, routing, A2A and chat requirements.
 Every arrow is bidirectional. Each agent **receives** A2A on its own port and
 **sends** A2A to all six peers. Peer lists are symmetric by construction.
 
-## The seven agents
+## The seven with gateways
 
 | id | port | role | delegates to | must not |
 |---|---|---|---|---|
@@ -48,9 +87,10 @@ Each profile must satisfy all of these. A profile missing any one is a defect.
    authenticates it. `GET /.well-known/agent.json` must advertise the a2a skill.
 2. **A2A outbound.** The profile's `a2a_agents` block lists all six peers with a
    non-empty token, so it can address any node.
-3. **Chat.** The profile is reachable as a chat agent: `hermes -p <id> chat`
-   works, and the agent answers on its own channel. The console exposes a chat
-   affordance per agent.
+3. **Chat.** The profile is addressable by the console, which runs
+   `hermes -p <id> -z <prompt>` (`lib/data/agent-chat.ts`): one process per turn,
+   with prior turns re-supplied as context from the server's own transcript. The
+   profile answers on its own channel.
 4. **Vault.** MCP `obsidian` is wired with
    `OBSIDIAN_VAULT_PATH=/home/bor/Documents/Obsidian/Hermes-Agent` and
    `OBSIDIAN_MCP_TOOL_SETS=notes_write,vault_analysis`.
@@ -72,8 +112,10 @@ Every profile, including `default`, carries:
 
 Consistency rules:
 
-- Ports, model ids and peer names must match `config.yaml` exactly.
-- A peer named in `AGENTS.md` must exist in the topology table above.
+- Ports, model ids and peer names must match `config.yaml` exactly, and a port in
+  `config.yaml` must match `agents/registry.json`. The registry is what the
+  console probes; the config is what the gateway binds.
+- A peer named in `AGENTS.md` must exist in the registry.
 - Anything an agent must never do appears in both `SOUL.md` and `TOOLS.md`.
 - The vault path in every file is the real absolute path — never a `NAME`
   placeholder. (The previous `frontend/SOUL.md` shipped
@@ -86,6 +128,20 @@ Consistency rules:
 - Content chain: `management-research → social-media`, approval from `default`.
 - A failed sub-agent is reported exactly as it failed, then the caller decides:
   retry, escalate, or abort. Silent retries are a defect.
+
+## Owner acceptance policy
+
+From `agents/registry.json`, and enforced by the review queue in `/discussion`:
+
+- `owner_receives`: `VERIFIED` only. Andy never receives raw work.
+- An agent must verify its own work with a second agent before reporting
+  `VERIFIED`, and attach raw tool output, file paths and diffs as evidence.
+- `BLOCKED` / `UNVERIFIED` / `FAILED` must be stated honestly rather than guessed.
+
+The console **declares** who acted on a transition rather than proving it: one
+shared token means the server cannot tell two people apart, so `transition()`
+validates the name against this registry and stores `attribution: "declared"`.
+The toast says so. See `docs/DASHBOARD.md`.
 
 ## Vault
 
@@ -103,19 +159,29 @@ Agents/          one folder per agent for self-improvement notes
 
 Every note carries YAML frontmatter and uses `[[wiki-links]]`. No secrets, ever.
 
+**`/notes` in the console does not read this vault.** It serves
+`SEED_NOTES` from `lib/data/vault.ts`, in process memory, and says so in its
+page description and its `source` payload. Wiring the real vault is a host-side
+task: `docs/HERMES-LOCAL-SETUP.md` §3.
+
 ## Remote layout
 
 ```
 /home/bor/.hermes/
 ├── SOUL.md                 orchestrator doc set
-├── constitution.md         one section per agent, all seven
+├── constitution.md         one section per agent
+├── registry.json           the canonical roster the collector reads
 ├── config.yaml             model, ports, a2a_agents, delegation, mcp
+├── mesh-inventory.py       the read-only collector
 ├── .env                    credentials — never read by the dashboard
 └── profiles/<id>/
     ├── SOUL.md  AGENTS.md  IDENTITY.md  TOOLS.md  USER.md  HEARTBEAT.md
     ├── config.yaml
     └── obsidian/self-improvement.md
 ```
+
+The console is deployed separately, at `/opt/anim-dashboard` on the same host,
+with its own git checkout and `.env.local`. The two trees are not nested.
 
 ## Change safety
 
@@ -126,4 +192,6 @@ Every remote write is preceded by a backup:
 ```
 
 **Never build, install, or restart services on the server.** See rule 1 in
-`AGENTS.md`. Writing markdown is a content change and is allowed; deploying is not.
+`AGENTS.md`. Writing markdown is a content change and is allowed; deploying is
+not. A finding that needs a server-side build or a gateway restart goes into
+`docs/SERVER-DEFERRED.md` instead of being acted on.

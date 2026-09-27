@@ -28,15 +28,19 @@ a change is considered done.
 | --- | --- | --- |
 | `/` | Mesh overview, topology, throughput, latency, token spend | `/api/mesh` |
 | `/agents` | Peer roster, live constellation, inspector drawer | `/api/mesh`, `/api/mesh-live` |
-| `/activity` | Event stream, pause/show-all | `/api/activity` |
+| `/activity` | Recorded event log, filter by level/kind/peer, pause refetch | `/api/activity` |
 | `/kanban` | Work board, `?new=1` deep link to compose | `/api/board` |
 | `/analytics` | Tables and charts | `/api/mesh` |
 | `/discussion` | Per-agent chat and the owner review queue | `/api/agent-chat` |
-| `/notes` | Vault view | `/api/notes` |
+| `/notes` | Working notes — **not** the Hermes vault | `/api/notes` |
 | `/settings` | Preferences | local |
 
-Every route needs a real `<h1>`, a unique document title, and zero horizontal
-overflow at **1512px** and **390px**.
+Every route needs exactly one `<h1>`, a unique document title, and zero
+horizontal overflow at **1512px** and **390px**. The topbar shows the route
+name, but it is a `<p>`: a second `<h1>` in the chrome duplicated the page's own
+heading on seven of eight routes, and the audit's "an `<h1>` exists" test was
+satisfied by either one. `npm run audit:ui` now fails a route that renders more
+than one.
 
 ## Live bridge
 
@@ -214,14 +218,16 @@ used deliberately: the bridge is an on-demand collect, so a websocket would
 add a long-lived privileged channel for no gain.
 
 Polling refreshes what the host reports. It does not make a stopped gateway run —
-7 gateways are live and 19 are installed but stopped, and the UI says so.
+7 gateways are live and 19 profiles have no port and no running gateway, and the UI says so.
 
 ## Ports
 
-Each agent owns one port, `9900`–`9925`, unique with no gaps. Seven existing
-gateways hold `9900`–`9906`; the 19 new profiles are configured for
-`9907`–`9925` but are **not started**. Do not start them on the agent server
-without an explicit decision and a capacity check.
+`9900`–`9925` is the **reserved** range for the mesh. It is not fully
+allocated: only the 7 existing profiles claim a port (**9900–9906**), and
+`9907`–`9925` is held in reserve with no registry entry and no listener. A
+profile with no port reports `port: null` and the UI renders `—`, because
+probing a guessed port reports a live agent as offline. `tests/registry-ports.test.mjs`
+fails if a module hardcodes a mesh port again, or if two profiles claim one.
 
 **The mesh range is server-private and must stay that way.** A gateway binds
 `127.0.0.1`, never `0.0.0.0`. The ports carry agent cards and peer material, and
@@ -243,7 +249,8 @@ the case the check exists to catch.
 
 Note that a port being closed does not mean the profile is unusable: the
 `hermes -p <profile>` CLI can address a profile whose gateway is not listening,
-so "19 stopped" describes the gateways, not the profiles.
+so "19 stopped" describes the gateways, not the profiles. Starting them is a
+host decision with a capacity check attached — `docs/SERVER-DEFERRED.md`.
 
 ### Local development binds loopback too
 
@@ -283,10 +290,64 @@ These are enforced by `npm run audit:ui` and by CI:
 ## Definition of done
 
 ```
-npm run verify      # secret scan + tsc + eslint --max-warnings=0 + build
+npm run verify      # secret scan + tsc + eslint --max-warnings=0 + tests + build
 npm run audit:ui    # needs a served app; fails on overflow, clipping, console errors
 ```
 
 `npm run audit:ui` aborts with a non-zero exit if any route failed to render, so
 a dead server can never be mistaken for a clean run. Screenshots land in
-`/tmp/anim-audit` and are uploaded as CI artifacts.
+`/tmp/anim-audit` and are uploaded as CI artifacts. PNGs are captured on every
+run, local and CI alike.
+
+Two details that cost a false result each, both now handled:
+
+- **It targets `http://127.0.0.1:3000`**, the address `next start` and `next dev`
+  both pin. `localhost` may resolve to `::1`, and on a dual-stack machine
+  whatever else holds port 3000 over IPv6 answers instead — during this audit that
+  was an unrelated project in another directory, which the run measured before the
+  404s were traced. Override with `BASE_URL`.
+- **It waits for the `<h1>` instead of sleeping.** The wait used to be a flat
+  3.2s, and a cold production server can still be hydrating after that: the first
+  route was recorded with no heading and the whole run aborted on a page that
+  rendered a second later. `waitForHeading()` polls until the heading paints,
+  capped by `READY_TIMEOUT_MS` (10s, override with `AUDIT_READY_TIMEOUT_MS`), and a
+  page that never paints is still probed and still fails. Each check reports
+  `readyMs`, and a run that needed most of the timeout says so.
+
+### What `audit:ui` does and does not check
+
+Checked on all 8 routes at 1512px and 390px: HTTP render, **exactly one** `<h1>`
+per page, a unique `document.title` per route, horizontal overflow, elements
+wider than the viewport, text clipped by a fixed-height container, and console
+errors (whitelisting only a `503` from the optional live bridge, or from a deploy
+with no `ANIM_API_TOKEN` where the refusal is the designed behaviour).
+
+**Not checked: interactions.** `INTERACTIONS` in `scripts/ui-audit.mjs` records
+the controls each route must prove — search, filter, drag, submit — but no CDP
+driver executes it, and `AUDIT_INTERACTIONS` is read by nothing. It is a written
+spec, and the per-route files in `docs/screenshots/` describe it, not a passing
+result. Implementing the driver is a real task; do not report these as verified
+until it exists. `tests/ui-audit-bridge.test.mjs` keeps the spec's routes and the
+audited routes in step.
+
+## Honest coverage: what is not connected yet
+
+Three areas render a labelled empty state rather than a number, because the host
+does not export the measurement. They are specified, per field, in
+`docs/HERMES-LOCAL-SETUP.md`:
+
+- **Throughput, latency, error and token history** — the host exports a
+  point-in-time snapshot only, so `live-mesh.ts` returns an empty series.
+- **Per-agent load heatmap** — no load metric exists, so the grid is empty
+  rather than 624 fabricated zero cells.
+- **Health score** — no measurable definition exists, so `Agent.health` is
+  `number | null` and renders `—`. `meshHealthScore()` returns `null` when no
+  agent reported.
+- **Resolved model and provider** — the host reports neither. `live-mesh.ts` sets
+  both to `"unknown"` and `describeModel()` renders the em dash, so the roster
+  cannot present an agent's card name as if it were a model.
+
+`/notes` is a fifth: it serves `SEED_NOTES` from `lib/data/vault.ts` in
+process memory, and the page description, the route metadata and the route's
+`source` payload all say so (`persisted: false`, `sharedWithAgents: false`). It
+is not the Obsidian vault, even though the folder names are Obsidian's.

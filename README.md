@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AnIm — Agent Intelligence Mesh
 
-## Getting Started
+A read-mostly console for supervising a mesh of autonomous Hermes agents: 26
+profiles, 5 departments, one orchestrator that routes work and refuses to hand
+Andy anything it has not verified.
 
-First, run the development server:
+The point of this repo is not the charts. It is the rule that the UI never shows
+a number it cannot source. Real telemetry or a labelled `—`.
+
+## Routes
+
+| Route | What it answers | Data |
+| --- | --- | --- |
+| `/` | Mesh overview, reporting hierarchy, throughput, latency, token spend | `/api/mesh` |
+| `/agents` | Peer roster, live constellation, inspector drawer | `/api/mesh`, `/api/mesh-live` |
+| `/activity` | Recorded event stream, pause, filter | `/api/activity` |
+| `/kanban` | Hermes work board, `?new=1` composes | `/api/board` |
+| `/analytics` | Tables and charts | `/api/mesh` |
+| `/discussion` | Per-agent chat and the owner review queue | `/api/agent-chat` |
+| `/notes` | Working notes, explicitly **not** the Obsidian vault | `/api/notes` |
+| `/settings` | Preferences | local |
+
+`npm run audit:ui` checks all eight at **1512px** and **390px**: horizontal
+overflow, clipped text, elements wider than the viewport, and console errors.
+
+## Running it
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm ci
+npm run dev        # 127.0.0.1 only, never 0.0.0.0
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`dev` and `start` both pin `-H 127.0.0.1`. Next.js defaults to `0.0.0.0`, which
+would publish a page that can dispatch work to 26 agent profiles to everything
+on the network. To reach it from another machine, tunnel:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+ssh -L 3000:127.0.0.1:3000 root@72.61.141.91
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Transport
 
-## Learn More
+The console is deployed **on** the mesh host (`/opt/anim-dashboard`, behind
+nginx), so it runs `ANIM_EXEC_MODE=local`: the collector, the `hermes` CLI and
+`127.0.0.1:<port>` are reached directly and no SSH channel is opened to itself.
+On a laptop, `auto` falls back to SSH and fails closed without a key. See
+[docs/SECURITY.md](docs/SECURITY.md).
 
-To learn more about Next.js, take a look at the following resources:
+### Auth
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Write-capable endpoints require `ANIM_API_TOKEN` or a session cookie. With no
+token configured, they answer `503 auth_misconfigured` **by design** rather than
+opening up. Read-only routes (`/api/mesh`, `/api/mesh-live`) stay open; they
+expose no secrets. Set it in `.env.local` (gitignored, mode 600):
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48
+```
 
-## Deploy on Vercel
+Never in a doc, a commit, or a transcript. `.env.example` documents every
+variable the code reads.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Definition of done
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run verify     # secret scan + tsc + eslint --max-warnings=0 + tests + build
+npm run audit:ui   # needs a served app; fails on overflow, clipping, console errors
+```
+
+The test suite is the honesty guard: it fails if a fabricated series, a
+constant health score, a port table that drifts from `agents/registry.json`, a
+mutating route without origin and auth checks, or a token-shaped string comes
+back. 317 tests, no test-runner dependency — Node runs the TypeScript sources
+directly.
+
+## Docs
+
+| File | Contents |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | Operating rules. Read before doing anything here. |
+| [docs/DASHBOARD.md](docs/DASHBOARD.md) | Truth rules, routes, live bridge, layout invariants |
+| [docs/AGENT_MESH.md](docs/AGENT_MESH.md) | Mesh specification: topology, profiles, ports, doc set |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, forbidden list, bridge contract |
+| [docs/HERMES-LOCAL-SETUP.md](docs/HERMES-LOCAL-SETUP.md) | What the host still has to export, per area |
+| [docs/SERVER-DEFERRED.md](docs/SERVER-DEFERRED.md) | Findings that need a server decision, not a commit |
+| [docs/screenshots/](docs/screenshots) | Per-route audit assertions |
+| [AUDIT_REPORT.md](AUDIT_REPORT.md) | Dated snapshot of the 7-profile mesh audit |
+| [IMPROVISATION_MASTER.md](IMPROVISATION_MASTER.md) | Operator runbook for the mesh host |
+
+## Rules worth knowing before you touch anything
+
+1. **Never build or deploy on the agent server.** Builds happen locally. The
+   server is runtime and content only.
+2. **No secrets, ever.** This remote is public. `npm run scan:secrets` and the
+   `secret-guard` workflow both fail a leak.
+3. **Mesh ports `9900`–`9925` are server-private.** A gateway binds
+   `127.0.0.1`, never `0.0.0.0`. `npm run check:ports` audits the host in place
+   and exits non-zero if that range is exposed.
+
+Details in [AGENTS.md](AGENTS.md).

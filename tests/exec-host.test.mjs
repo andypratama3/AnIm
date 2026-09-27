@@ -52,11 +52,12 @@ describe("exec mode", () => {
 describe("transport selection", () => {
   test("auto prefers local when the target is on this filesystem", () => {
     delete process.env.ANIM_EXEC_MODE;
-    const resolved = execHost.resolveTransport([
-      "/home/bor/.hermes/mesh-inventory.py",
-      "/home/bor/.local/bin/hermes",
-    ]);
-    assert.equal(resolved, "local");
+    // Stands in for the collector, but exists on any machine that runs the
+    // suite. The hard-coded `/home/bor/...` paths this used made the assertion
+    // pass only on the mesh host, so `npm test` failed on a laptop and in CI
+    // while the transport logic was fine.
+    const localTarget = new URL("./fixtures/agent-chat-stub.mjs", import.meta.url).pathname;
+    assert.equal(execHost.resolveTransport([localTarget]), "local");
   });
 
   test("auto falls back to ssh when nothing is local", () => {

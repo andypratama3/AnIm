@@ -3,10 +3,14 @@ import assert from "node:assert/strict";
 
 import {
   describeError,
+  INTERACTIONS,
   isBridgeUnavailable,
+  READY_TIMEOUT_MS,
   readDeployMode,
   resolveToken,
+  ROUTES,
   signIn,
+  waitForHeading,
 } from "../scripts/ui-audit.mjs";
 
 /**
@@ -186,6 +190,114 @@ describe("the audit tells a deliberate refusal from a real outage", () => {
   test("a malformed entry is not an expected degradation", () => {
     for (const bad of [null, undefined, {}, { status: 503 }, { url: "x" }]) {
       assert.equal(isBridgeUnavailable(bad, { misconfigured: true }), false);
+    }
+  });
+});
+
+describe("waiting for a page to render", () => {
+  // No real timers: a fake clock keeps these instant and keeps the timeout
+  // assertion honest instead of relying on wall-clock scheduling.
+  const fakeClock = () => {
+    let now = 0;
+    return {
+      now: () => now,
+      delay: async (ms) => {
+        now += ms;
+      },
+      advance: (ms) => {
+        now += ms;
+      },
+    };
+  };
+
+  test("it returns as soon as the heading paints", async () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const result = await waitForHeading(
+      () => (++calls >= 3 ? "Mesh overview" : ""),
+      { timeoutMs: 5000, intervalMs: 100, delay: clock.delay },
+    );
+    assert.equal(result.ready, true);
+    assert.equal(result.heading, "Mesh overview");
+    assert.equal(calls, 3, "it should stop polling the moment the heading is there");
+  });
+
+  test("an immediate page costs one probe and no waiting", async () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const result = await waitForHeading(
+      () => {
+        calls += 1;
+        return "Agents";
+      },
+      { timeoutMs: 5000, intervalMs: 100, delay: clock.delay },
+    );
+    assert.equal(result.ready, true);
+    assert.equal(calls, 1);
+  });
+
+  test("a page that never renders reports not-ready instead of hanging", async () => {
+    const clock = fakeClock();
+    const result = await waitForHeading(() => "", {
+      timeoutMs: 1000,
+      intervalMs: 100,
+      delay: clock.delay,
+    });
+    assert.equal(result.ready, false);
+    assert.ok(result.waitedMs >= 1000, `gave up after ${result.waitedMs}ms, expected at least the timeout`);
+  });
+
+  test("an evaluation that throws mid-navigation keeps polling", async () => {
+    const clock = fakeClock();
+    let calls = 0;
+    const result = await waitForHeading(
+      () => {
+        calls += 1;
+        if (calls < 3) throw new Error("Cannot find context with specified id");
+        return "Settings";
+      },
+      { timeoutMs: 5000, intervalMs: 100, delay: clock.delay },
+    );
+    assert.equal(result.ready, true, "a transient evaluation error is not a page that failed to render");
+    assert.equal(calls, 3);
+  });
+
+  test("whitespace is not a heading", async () => {
+    const clock = fakeClock();
+    const result = await waitForHeading(() => "   ", {
+      timeoutMs: 300,
+      intervalMs: 100,
+      delay: clock.delay,
+    });
+    assert.equal(result.ready, false);
+  });
+
+  test("the default timeout is long enough for a cold production server", () => {
+    // It replaced a flat 3.2s sleep that was too short on a cold start, so the
+    // replacement has to actually be longer than what it replaced.
+    assert.ok(READY_TIMEOUT_MS >= 5_000, `READY_TIMEOUT_MS=${READY_TIMEOUT_MS} is not a real wait`);
+  });
+});
+
+/**
+ * The interaction spec is written, not run — but it is quoted as coverage in
+ * `docs/screenshots/*.md` and in `docs/DASHBOARD.md`, so a route added without
+ * an entry would leave the docs claiming a control the spec never recorded.
+ */
+describe("the interaction spec matches the audited routes", () => {
+  test("every audited route has at least one recorded interaction", () => {
+    for (const route of ROUTES) {
+      const recorded = INTERACTIONS[route];
+      assert.ok(
+        Array.isArray(recorded) && recorded.length > 0,
+        `${route} is audited but records no interaction; the docs would claim coverage that does not exist`,
+      );
+    }
+  });
+
+  test("no route is recorded that is not audited", () => {
+    for (const route of Object.keys(INTERACTIONS)) {
+      assert.ok(ROUTES.includes(route), `${route} is recorded but never audited`);
     }
   });
 });

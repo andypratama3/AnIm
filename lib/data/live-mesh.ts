@@ -69,10 +69,13 @@ function toAgent(agent: RemoteAgent): Agent {
     // No `?? 0`: an unassigned port is unknown, not zero.
     port: agent.port ?? null,
     status,
-    // The host does not report the resolved model or provider, so these stay empty
-    // rather than being borrowed from a simulated profile.
-    model: agent.agentCard.name ?? "unknown",
-    provider: "hermes",
+    // The host does not report the resolved model or provider, so both stay
+    // unknown rather than borrowed from a simulated profile. The agent card
+    // name is an identity, not a model: `agentCard.name` would put "Bor" or
+    // "Aria" in a column labelled Model and read as a resolved model. The
+    // drawer renders an em dash for these, the same as the unmeasured numbers.
+    model: "unknown",
+    provider: "unknown",
     health: healthFor(),
     // The collector exposes no latency probe, uptime history, token counter,
     // queue depth, load or memory figure. These stay null so the roster and the

@@ -260,7 +260,7 @@ export default function AgentsPage() {
             <EmptyState
               icon={<SlidersHorizontalIcon size={22} />}
               title="No peers match"
-              description="Reset the status filter or clear the search to see all seven profiles."
+              description={`Reset the status filter or clear the search to see all ${agents.length} profiles.`}
               action={
                 <Button
                   variant="subtle"

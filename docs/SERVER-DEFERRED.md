@@ -66,37 +66,47 @@ review stays a declared name (see the deferred item below).
 - Security guard (`npm run check:ports`): exits non-zero if any of 9900–9925 binds `0.0.0.0`.
 - Mesh binds `127.0.0.1`: enforced by `docs/DASHBOARD.md`, `docs/AGENT_MESH.md`, CI step.
 
-## Screenshots (each route — 8 routes × 2 viewports = 16)
+## Screenshots (8 routes × 2 viewports = 16 PNGs)
 
-Screenshots verify layout, title uniqueness, and interaction surface. See `docs/DASHBOARD.md` for full interaction assertions; this file holds the captured state per route.
+`npm run audit:ui` drives a real Chromium over CDP at 1512px and 390px and
+writes a PNG per route per viewport to `/tmp/anim-audit/`. CI runs it after
+`verify`, and uploads the PNGs as the `ui-audit-screenshots` artifact
+(`if: always()`, 7-day retention). It fails the job on horizontal overflow,
+clipped or overlapping content, console errors, a missing `<h1>`, or a document
+title that is not unique.
 
-- `/` (Overview) — desktop 1512px, mobile 390px — static build, no server needed.
-- `/agents` — peer roster with `Agent.port` label; `MeshGraph` reporting lines visible.
-- `/activity` — event feed with `recorded` / `refreshing` labels; no transcript text in detail.
-- `/kanban` — task board; drag interaction covered by CI assertion.
-- `/analytics` — charts with `MeshMetrics` data from real collector snapshot.
-- `/discussion` — chat view; `SessionGate` shows `unreachable` banner when `authMisconfigured`.
-- `/notes` — labeled as working notes (`persisted: false`, `sharedWithAgents: false`).
-- `/settings` — "Reporting lines" tab (not "A2A links"); `Env` label updated.
+What the audit does **not** do: execute the `INTERACTIONS` spec. No driver exists
+for it, and `AUDIT_INTERACTIONS` is not read by any code path — if it is set, the
+script now warns and says so. Layout, document title and console hygiene are
+verified; clicking, dragging and typing are not. The spec in
+`scripts/ui-audit.mjs` is a written intent, not a test result, and the per-route
+files under `docs/screenshots/` record the assertions per route and viewport:
 
-Screenshot reference files (per route, per viewport):
-- `docs/screenshots/root.md` — `/`
-- `docs/screenshots/agents.md` — `/agents`
-- `docs/screenshots/activity.md` — `/activity`
-- `docs/screenshots/kanban.md` — `/kanban`
-- `docs/screenshots/analytics.md` — `/analytics`
-- `docs/screenshots/discussion.md` — `/discussion`
-- `docs/screenshots/notes.md` — `/notes`
-- `docs/screenshots/settings.md` — `/settings`
+- `docs/screenshots/route-root.md` — `/`
+- `docs/screenshots/route-agents.md` — `/agents`
+- `docs/screenshots/route-activity.md` — `/activity`
+- `docs/screenshots/route-kanban.md` — `/kanban`
+- `docs/screenshots/route-analytics.md` — `/analytics`
+- `docs/screenshots/route-discussion.md` — `/discussion`
+- `docs/screenshots/route-notes.md` — `/notes`
+- `docs/screenshots/route-settings.md` — `/settings`
 
-Actual PNG capture runs in CI (`AUDIT_INTERACTIONS=1` over Chrome/CDP); these `.md` files record the assertions and viewport parameters.
+They are named `route-*.md` on purpose: a bare `agents.md` inside a directory
+of agent-facing documents reads as an `AGENTS.md` instruction file to tooling
+that scans for it, and on a case-insensitive filesystem it collides with the
+repo's real one.
+
+CI runs against the production build on `127.0.0.1:3000` with no token set, so
+`/api/mesh` resolves `simulated` and the audit screens that state. The audit is
+a layout pass, not a data pass.
 
 ## References
 
 - `docs/DASHBOARD.md` — quality bar, security rules, interaction assertions.
 - `docs/AGENT_MESH.md` — mesh topology, port binding, loopback enforcement.
-- `scripts/ui-audit.mjs` — `INTERACTIONS` spec (CI-only execution).
+- `scripts/ui-audit.mjs` — `ROUTES` (executed) and `INTERACTIONS` (recorded only).
+- `tests/ui-audit-bridge.test.mjs` — every route keeps an interaction spec, and the audit's cold-start heading wait behaves (37 passing).
 - `tests/mesh-layout.test.mjs` — hierarchy regression tests (18 passing).
 - `tests/chat-history.test.mjs` — budget regression test (20 passing, including 19-char gap test).
 - `tests/activity-feed.test.mjs` — transcript leak guard test (11 passing).
-- `tests/session-gate-render.test.mjs` — shared read-only banner.
+- `tests/session-gate-render.test.mjs` — shared read-only banner (10 passing).

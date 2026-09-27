@@ -1,0 +1,40 @@
+---
+route: /kanban
+viewports: desktop (1512x950) + mobile (390x844)
+audit: npm run audit:ui  (CI job `ui-audit`, artifact `ui-audit-screenshots`)
+---
+
+# /kanban — screenshot reference
+
+## What the audit actually verified
+
+Executed on every run, on both viewports:
+
+- The page rendered at all, with **exactly one** `<h1>`: zero is a route that never rendered and aborts the run, two is a flattened document outline and fails it. The document title must contain `AnIm`. The audit waits for that heading to paint rather than sleeping a fixed interval, so a cold server is measured once the page exists; a page that never paints is still probed and still fails. A dead server therefore cannot pass as a clean run.
+- `document.title` is not shared with another route. Eight tabs with one title is the same route eight times, so duplicates fail the job.
+- Horizontal overflow is zero (`scrollWidth - clientWidth`).
+- No element is wider than its viewport.
+- No text node is clipped by a fixed-height container.
+- No console error, and no uncaught page error, except a deliberate 503: the bridge being unreachable, or a deploy with no `ANIM_API_TOKEN` refusing writes. The mode comes from `/api/session`, never from matching log prose.
+- A PNG is written to `/tmp/anim-audit/` for this route at both viewports. CI uploads them as the `ui-audit-screenshots` artifact.
+
+Route-specific, checked by reading the rendered page in this audit run and by the
+regression tests listed in [SERVER-DEFERRED](../SERVER-DEFERRED.md):
+
+- The four board columns are `Backlog`, `In flight`, `Review`, `Shipped`, each with the hint shown on the column. They are a view over the task states, not the state names themselves: the wire vocabulary in `lib/data/task-store.ts` is `PROPOSED`, `IN_PROGRESS`, `SELF_CHECKED`, `PEER_REVIEWED`, `VERIFIED`, `BLOCKED`, `FAILED`, and the `How routing works` card is where that mapping is stated.
+- Moving a card is optimistic with rollback when the gateway refuses, and the drop target is a column rather than an arbitrary offset.
+
+## What has not been verified
+
+The interaction spec for this route is:
+
+- `click-task-card`
+- `drag-task-to-next`
+- `click-owner`
+
+**None of these steps is executed.** `scripts/ui-audit.mjs` holds the spec and
+labels it `recorded - NOT executed`; no driver exists for it, and no code path
+reads `AUDIT_INTERACTIONS`. Setting that variable makes the script warn rather
+than pretend. Treat the list above as the intended surface, not as a test
+result — a green CI run says the layout is sound, not that these interactions
+work.

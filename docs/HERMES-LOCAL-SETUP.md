@@ -15,8 +15,8 @@ Measured from the live host on 2026-09-27 (26 profiles, 7 gateways running):
 
 | Area | Source | State |
 |---|---|---|
-| Roster, status, ports, peers, docs | `mesh-inventory.py` | connected |
-| Chat turns | `hermes chat` CLI | connected |
+| Roster, status, ports, peers, doc presence | `mesh-inventory.py` | connected |
+| Chat turns | `hermes -p <id> -z <prompt>` | connected |
 | A2A probe | HTTP to the gateway port | connected |
 | Kanban board | `hermes kanban list --json` | connected (read + create + complete) |
 | Owner review queue | `.data/review-queue.json` | connected, file-backed |
@@ -24,7 +24,7 @@ Measured from the live host on 2026-09-27 (26 profiles, 7 gateways running):
 | **Throughput / latency / error / token history** | — | **not exported by the host** |
 | **Per-agent load (heatmap)** | — | **not exported by the host** |
 | **Health score** | — | **no measurable definition exists** |
-| **Notes** | `SEED_NOTES` | **placeholder, not the real vault** |
+| **Notes** | `SEED_NOTES` | **placeholder, labelled in the UI, not the real vault** |
 | **Hierarchy** | `agents/registry.json` in this repo | **a repo copy, not read from Hermes** |
 
 ---
@@ -90,14 +90,19 @@ fabricated default comes back.
 ## 3. Notes should read the real vault
 
 `lib/data/vault.ts` exports `SEED_NOTES` and `/api/notes` serves them, so the
-notes page shows invented content. The route already carries a comment admitting
-this.
+content is invented. It is **labelled**: the route returns
+`source: { kind: "local", persisted: false, sharedWithAgents: false }`, and the
+page description says the notes live in the dashboard process only, are not
+written to disk, and are gone on restart. A dead "New note" button that created
+nothing has been removed rather than left as a control that lies.
 
-On the host, decide the source of truth — `hermes vault list` / the files under
-`/home/bor/.hermes/` — then replace the seed in `/api/notes` with a read, using
-the same `exec-host` bridge and the same read-only posture as the collector.
-Keep the folder list (`VAULT_FOLDERS`) as a UI affordance, but do not let it
-imply the contents came from Hermes when they did not.
+That labelling is the honest floor, not the destination. On the host, decide the
+source of truth — `hermes vault list` or the files under `/home/bor/.hermes/` —
+then replace the seed in `/api/notes` with a read, using the same `exec-host`
+bridge and the same read-only posture as the collector. Keep `VAULT_FOLDERS` as a
+UI affordance while the contents are seeded, but do not let the folder names
+imply the notes came from Hermes when they did not. If a real reader lands, the
+page label has to change with it.
 
 ## 4. Hierarchy should come from Hermes
 
@@ -114,13 +119,19 @@ same class of defect as the fabricated series.
 
 ## 5. Start the remaining gateways (optional, your call)
 
-19 of 26 profiles are installed but not running, so 19 rows show `offline` and
-an em dash everywhere. That is honest, but if you want a populated console, the
-gateways have to run. The collector already reports the real state; nothing in
-the console needs to change.
+19 of 26 registry entries are `state: "new"`: no port assigned, so they show an
+em dash wherever a port belongs, and their rows report whatever the collector
+finds — `installed` if the profile directory is there with a stopped gateway,
+`missing` if it is not. That is honest, but if you want a populated console the
+gateways have to run and the registry needs ports for them. The collector
+already reports the real state; nothing in the console needs to change.
 
-Note the interaction with §1: more running gateways means more real history,
-but only once §1 exists.
+`9907`–`9925` is reserved and currently unallocated, so assigning those ports is
+a deliberate step with a capacity check attached. Do not start a gateway on the
+agent server without an explicit decision — rule 1 in `AGENTS.md`.
+
+Note the interaction with §1: more running gateways means more real history, but
+only once §1 exists.
 
 ## 6. SSH key for the laptop path (only if you run the console off-host)
 
@@ -137,7 +148,7 @@ ssh-keygen -t ed25519 -C "anim-console" -f ~/.ssh/anim_console
 On the **host**, add the public key to root's authorized_keys, then verify:
 
 ```bash
-ssh -i ~/.ssh/anim_console root@72.61.41.91 'hostname'
+ssh -i ~/.ssh/anim_console root@72.61.141.91 'hostname'
 ```
 
 The console's SSH branch already runs with `BatchMode=yes` and
@@ -153,14 +164,21 @@ Never copy the production token. The file is gitignored (`*.local`):
 ```
 ANIM_API_TOKEN=<generate your own: openssl rand -base64 48 | tr -d '\n/+=' | cut -c1-48>
 ANIM_EXEC_MODE=auto
-ANIM_SSH_HOST=root@72.61.41.91
+ANIM_SSH_HOST=root@72.61.141.91
 ANIM_SSH_TIMEOUT_MS=12000
 ANIM_PROBE_TIMEOUT_MS=15000
 ANIM_CHAT_TIMEOUT_MS=180000
 ANIM_CHAT_RATE_LIMIT=6
 ANIM_CHAT_RATE_WINDOW_MS=60000
 ANIM_CHAT_MAX_CONCURRENT=2
+ANIM_CHAT_MAX_MESSAGES=200
 ```
+
+`ANIM_GATEWAY_URLS` is only read by the offline simulated fallback and is not
+needed on a laptop. `ANIM_CHAT_STORE` and `ANIM_TASK_STORE` relocate the
+process-local JSON files under `.data/` — useful when `/opt/anim-dashboard` and a
+checkout share a machine, and the reason those files are not state a restart
+destroys by surprise. `.env.example` is the authoritative list.
 
 Confirm it is ignored before you ever commit:
 
@@ -191,8 +209,11 @@ npm run audit:ui     # needs a reachable server and a token in .env.local
 
 ## 9. Streaming chat: the honest position
 
-`hermes -z` **buffers its entire output** and emits it in one burst at the end,
-so the console cannot stream tokens from it. There is no `--stream` flag.
+**Current state:** the console calls `hermes -p <id> -z <prompt>`. `-z`
+**buffers its entire output** and emits it in one burst at the end, so the
+console cannot stream tokens from it. There is no `--stream` flag. A turn
+therefore shows real progress up to the call and then the whole reply, and the
+UI does not animate a typing effect that is not happening.
 
 `hermes chat --format stream-json` does emit real incremental events, and the
 console can consume them. Observed locally:

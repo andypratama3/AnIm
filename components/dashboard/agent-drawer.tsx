@@ -17,7 +17,7 @@ import {
 import { useConsole } from "@/components/providers/console-provider";
 import { useMesh } from "@/lib/hooks/use-data";
 import { useCopyToClipboard } from "@/lib/hooks/use-ui";
-import { NOT_MEASURED, formatCompact, formatDuration, formatMs, formatNumber, formatPercent, formatRelative, formatPort, describePort } from "@/lib/format";
+import { NOT_MEASURED, formatCompact, formatDuration, formatMs, formatNumber, formatPercent, formatRelative, formatPort, describePort, describeModel } from "@/lib/format";
 import { Sheet, SheetContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge, Dot, Meter } from "@/components/ui/badge";
@@ -170,8 +170,8 @@ export function AgentDrawer() {
                   Wiring
                 </p>
                 <dl className="space-y-2.5 text-[12px]">
-                  <Row icon={<CpuIcon size={14} />} label="Model" value={agent.model} mono />
-                  <Row icon={<DatabaseIcon size={14} />} label="Provider" value={agent.provider} />
+                  <Row icon={<CpuIcon size={14} />} label="Model" value={describeModel(agent.model)} mono />
+                  <Row icon={<DatabaseIcon size={14} />} label="Provider" value={describeModel(agent.provider)} />
                   <Row icon={<ShareNetworkIcon size={14} />} label="A2A peers" value={`${agent.peers} connected`} />
                   <Row icon={<StackIcon size={14} />} label="Tokens" value={formatCompact(agent.tokens)} />
                   <Row
@@ -208,7 +208,7 @@ export function AgentDrawer() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  void copy(`${agent.id} · ${describePort(agent.port)} · ${agent.model}`);
+                  void copy(`${agent.id} · ${describePort(agent.port)} · ${describeModel(agent.model)}`);
                   toast.success("Peer identity copied");
                 }}
               >

@@ -12,7 +12,6 @@ import {
   CopyIcon,
   CheckIcon,
   ArrowsOutSimpleIcon,
-  PlusIcon,
   TagIcon,
   HardDrivesIcon,
 } from "@phosphor-icons/react";
@@ -103,11 +102,6 @@ export default function NotesPage() {
           description="Newest first"
           padding="none"
           className={cn("h-fit", wide && "lg:hidden")}
-          actions={
-            <Button variant="ghost" size="iconXs" aria-label="New note">
-              <PlusIcon size={14} />
-            </Button>
-          }
         >
           <div className="space-y-2 px-3 pb-3">
             <div className="relative pt-3">
@@ -223,18 +217,23 @@ export default function NotesPage() {
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  // Headings are demoted by one level on purpose. The page's own
+                  // <h1> is "Notes", so a note whose body opens with `# Title` —
+                  // which is how most vault notes are written — would otherwise
+                  // render a second <h1> and flatten the outline. The note's
+                  // title is already shown in the header above.
                   h1: ({ children }) => (
-                    <h1 className="mt-0 text-[24px] font-semibold tracking-[-0.03em]">
-                      {children}
-                    </h1>
-                  ),
-                  h2: ({ children }) => (
-                    <h2 className="mt-7 text-[17px] font-semibold tracking-[-0.02em]">
+                    <h2 className="mt-0 text-[17px] font-semibold tracking-[-0.02em]">
                       {children}
                     </h2>
                   ),
+                  h2: ({ children }) => (
+                    <h3 className="mt-7 text-[15px] font-semibold tracking-[-0.02em]">
+                      {children}
+                    </h3>
+                  ),
                   h3: ({ children }) => (
-                    <h3 className="mt-5 text-[14px] font-semibold text-ink">{children}</h3>
+                    <h4 className="mt-5 text-[14px] font-semibold text-ink">{children}</h4>
                   ),
                   p: ({ children }) => (
                     <p className="mt-3 text-[13.5px] leading-[1.75] text-ink-muted">{children}</p>
