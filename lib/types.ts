@@ -23,7 +23,13 @@ export type Agent = {
   status: AgentStatus;
   model: string;
   provider: string;
-  health: number;
+  /**
+   * `null` unless something measured a real score. The host reports gateway
+   * state and A2A reachability, not quality, so a 0-100 "health" number has no
+   * measured basis and renders as an invented meter. Reachable state belongs in
+   * `status`.
+   */
+  health: number | null;
   /**
    * The mesh collector reports gateway state, A2A reachability and document
    * presence, and nothing else. These fields are therefore `null` on the live

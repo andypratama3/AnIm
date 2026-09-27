@@ -119,8 +119,22 @@ describe("session cookie", () => {
   test("token validation rejects blanks and near-misses", () => {
     assert.equal(session.tokenIsValid(TOKEN), true);
     assert.equal(session.tokenIsValid(""), false);
-    assert.equal(session.tokenIsValid(`${TOKEN} `), false);
-    assert.equal(session.tokenIsValid(TOKEN.toUpperCase()), false);
+    assert.equal(session.tokenIsValid("   "), false, "whitespace is not a credential");
+    assert.equal(session.tokenIsValid(TOKEN.toUpperCase()), false, "case still matters");
+    assert.equal(session.tokenIsValid(TOKEN.slice(0, -1)), false, "no prefix match");
+    assert.equal(session.tokenIsValid(`${TOKEN}x`), false, "no extension match");
+  });
+
+  // A paste carries what surrounds the secret. Rejecting it produced an
+  // `invalid token` the operator could not act on, for a value that was visibly
+  // correct, so surrounding formatting is stripped before the constant-time
+  // compare. This is the one place the check is deliberately forgiving; the
+  // assertions above are the line it must not cross.
+  test("surrounding paste formatting is tolerated, the secret is not", () => {
+    assert.equal(session.tokenIsValid(`${TOKEN} `), true, "trailing space");
+    assert.equal(session.tokenIsValid(`\`${TOKEN}\``), true, "code-fence marks");
+    assert.equal(session.tokenIsValid(`"${TOKEN}"`), true, "quotes");
+    assert.equal(session.tokenIsValid(`\`${TOKEN}"`), false, "mismatched wrapping is not guessed at");
   });
 
   test("cookie options keep it HttpOnly, strict and scoped to /api", () => {

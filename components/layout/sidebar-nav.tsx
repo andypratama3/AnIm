@@ -16,6 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { BRAND, NAV_GROUPS } from "@/lib/brand";
 import { useMesh } from "@/lib/hooks/use-data";
+import type { AgentStatus } from "@/lib/types";
 import { useConsole } from "@/components/providers/console-provider";
 import { cn } from "@/lib/utils";
 import { Dot } from "@/components/ui/badge";
@@ -37,13 +38,53 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const { data } = useMesh();
   const { setFocusAgent } = useConsole();
 
-  const counts: Record<string, number> = {
-    "/agents": data?.agents.length ?? 0,
-    "/kanban":
-      data?.agents.reduce((sum, agent) => sum + (agent.queue ?? 0), 0) ??
-      data?.totals.tasks ??
-      0,
+  // The badge shows a count only when something measured a real one.
+  //
+  // The old chain was `reduce((sum, a) => sum + (a.queue ?? 0), 0) ?? totals.tasks
+  // ?? 0`. Two faults: `??` only fires on null/undefined, and a reduce over an
+  // empty array returns `0`, so the totals fallback was unreachable; and
+  // `queue ?? 0` treats an unreported queue as an empty one, so a roster where
+  // some agents report and others do not sums to a number that is no agent's
+  // queue and not the total. Queue depth and task count are also different
+  // quantities, so they are never summed together.
+  const queues = (data?.agents ?? [])
+    .map((agent) => agent.queue)
+    .filter((queue): queue is number => typeof queue === "number");
+  const measuredQueue =
+    data !== undefined && data.agents.length > 0 && queues.length === data.agents.length
+      ? queues.reduce((sum, queue) => sum + queue, 0)
+      : null;
+
+  const counts: Record<string, number | null> = {
+    "/agents": data?.agents.length ?? null,
+    "/kanban": data?.totals.tasks ?? measuredQueue,
   };
+
+  // The peer list used to be `agents.slice(0, 5)`, which took the first five rows
+  // in registry order. With 26 profiles and 7 gateways actually running, that
+  // showed whichever agents happened to sort first — including stopped ones —
+  // and hid live ones, so the panel titled "Peers" did not answer "who is
+  // running right now". Active agents are the reason this list exists, so they
+  // lead; the rest follow so the panel still gives context, with a count so
+  // nothing is silently truncated.
+  const all = data?.agents ?? [];
+  const isActive = (status: AgentStatus) => status !== "offline";
+  const activeCount = all.filter((agent) => isActive(agent.status)).length;
+
+  // `busy` and `degraded` are the two states worth surfacing first; among equals
+  // keep registry order so the panel does not reshuffle on every poll. The sort
+  // is stable in every engine that matters here, but the status key is explicit
+  // so ordering never depends on that.
+  const STATUS_RANK: Record<AgentStatus, number> = {
+    busy: 0,
+    degraded: 1,
+    online: 2,
+    offline: 3,
+  };
+  const ranked = [...all].sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status]);
+  const PEER_LIMIT = 8;
+  const visiblePeers = ranked.slice(0, PEER_LIMIT);
+  const hiddenPeers = ranked.length - visiblePeers.length;
 
   return (
     <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-4">
@@ -108,11 +149,21 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
         transition={{ delay: 0.28, duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
         className="px-1"
       >
-        <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-subtle">
-          Peers
-        </p>
+        <div className="flex items-baseline justify-between px-2 pb-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-ink-subtle">
+            Peers
+          </p>
+          {data ? (
+            <span
+              className="text-[10px] tabular-nums text-ink-subtle"
+              title={`${activeCount} of ${all.length} agents running`}
+            >
+              {activeCount}/{all.length} active
+            </span>
+          ) : null}
+        </div>
         <ul className="space-y-0.5">
-          {(data?.agents ?? []).slice(0, 5).map((agent) => (
+          {visiblePeers.map((agent) => (
             <li key={agent.id}>
               <button
                 type="button"
@@ -138,6 +189,11 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             </li>
           ))}
         </ul>
+        {hiddenPeers > 0 ? (
+          <p className="px-2 pt-2 text-[10px] tabular-nums text-ink-subtle">
+            +{hiddenPeers} more not shown
+          </p>
+        ) : null}
       </motion.div>
     </nav>
   );

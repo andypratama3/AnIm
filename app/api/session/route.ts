@@ -62,7 +62,22 @@ export async function POST(request: Request) {
     return Response.json({ error: "token is required" }, { status: 400, headers: noStore });
   }
   if (!tokenIsValid(token)) {
-    return Response.json({ error: "invalid token" }, { status: 401, headers: noStore });
+    // "invalid token" is indistinguishable from "you pasted it wrong", and the
+    // most common cause by far is a paste that carried the surrounding fence,
+    // quote or newline. The response normalizes the obvious cases silently (see
+    // `normalizeToken`), so anything still failing here is a genuinely wrong
+    // credential — and it now says which, and how to get the right one, instead
+    // of leaving the operator to guess. The expected token is never echoed.
+    const looksLikePaste = /[`"'\s]/.test(token);
+    return Response.json(
+      {
+        error: "invalid token",
+        hint: looksLikePaste
+          ? "The submitted value contains spaces or quote characters. Paste the token on its own, with nothing around it."
+          : "This is not the configured ANIM_API_TOKEN. Find the first wrong character with: node scripts/token-check.mjs 'what you pasted'",
+      },
+      { status: 401, headers: noStore },
+    );
   }
 
   const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";

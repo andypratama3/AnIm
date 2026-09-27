@@ -1,7 +1,13 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 
-import { describeError, isBridgeUnavailable, readDeployMode } from "../scripts/ui-audit.mjs";
+import {
+  describeError,
+  isBridgeUnavailable,
+  readDeployMode,
+  resolveToken,
+  signIn,
+} from "../scripts/ui-audit.mjs";
 
 /**
  * The live bridge answers 503 when the agent host is unreachable, and the UI is
@@ -200,7 +206,7 @@ describe("the audit asks the server which mode it is in", () => {
       async () => new Response(JSON.stringify({ misconfigured: true }), { status: 200 }),
       () => readDeployMode("http://localhost:3000"),
     );
-    assert.deepEqual(mode, { misconfigured: true });
+    assert.equal(mode.misconfigured, true);
   });
 
   test("a configured deploy is not", async () => {
@@ -208,7 +214,31 @@ describe("the audit asks the server which mode it is in", () => {
       async () => new Response(JSON.stringify({ misconfigured: false }), { status: 200 }),
       () => readDeployMode("http://localhost:3000"),
     );
-    assert.deepEqual(mode, { misconfigured: false });
+    assert.equal(mode.misconfigured, false);
+  });
+
+  test("the mode also reports whether a session is needed and held", async () => {
+    // The audit has to sign in before it can measure a route: a deploy with a
+    // token puts the sign-in card in front of every page until the browser holds
+    // a session, so an audit that only learned `misconfigured` would measure a
+    // login form sixteen times.
+    const mode = await withFetch(
+      async () =>
+        new Response(JSON.stringify({ misconfigured: false, authRequired: true, authenticated: false }), {
+          status: 200,
+        }),
+      () => readDeployMode("http://localhost:3000"),
+    );
+    assert.equal(mode.authRequired, true, "a token is configured, so a session is required");
+    assert.equal(mode.authenticated, false, "and this browser holds none yet");
+  });
+
+  test("a deploy with no token needs no session", async () => {
+    const mode = await withFetch(
+      async () => new Response(JSON.stringify({ misconfigured: false, authRequired: false }), { status: 200 }),
+      () => readDeployMode("http://localhost:3000"),
+    );
+    assert.equal(mode.authRequired, false, "nothing to sign in to; the audit runs unauthenticated");
   });
 
   test("a lying or unreachable session endpoint keeps the audit strict", async () => {
@@ -223,7 +253,82 @@ describe("the audit asks the server which mode it is in", () => {
       async () => new Response(JSON.stringify({ misconfigured: "yes" }), { status: 200 }),
     ]) {
       const mode = await withFetch(impl, () => readDeployMode("http://localhost:3000"));
-      assert.deepEqual(mode, { misconfigured: false });
+      assert.equal(mode.misconfigured, false);
+      // An unknown mode must not be mistaken for "a session is required",
+      // because that would send the audit looking for a token it may not have.
+      assert.equal(mode.authRequired, false);
+      assert.equal(mode.authenticated, false);
     }
+  });
+});
+
+describe("the audit signs in when the deploy needs a session", () => {
+  const cookieResponse = (extraHeaders = {}) =>
+    new Response(JSON.stringify({ authenticated: true }), {
+      status: 200,
+      headers: { "content-type": "application/json", ...extraHeaders },
+    });
+
+  test("it exchanges the token for the session cookie value", async () => {
+    const original = globalThis.fetch;
+    let sent = null;
+    globalThis.fetch = async (url, init) => {
+      sent = { url: String(url), body: init?.body };
+      return cookieResponse({
+        "set-cookie": "anim_session=abc.def; HttpOnly; SameSite=Strict; Path=/api; Max-Age=43200",
+      });
+    };
+    try {
+      const value = await signIn("http://localhost:3000", "s3cret");
+      assert.equal(value, "abc.def", "attributes are stripped; only the value is planted");
+      assert.match(sent.url, /\/api\/session$/);
+      assert.deepEqual(JSON.parse(sent.body), { token: "s3cret" });
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("a refused token stops the audit instead of measuring a login form", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => new Response("nope", { status: 401 });
+    try {
+      await assert.rejects(
+        () => signIn("http://localhost:3000", "wrong"),
+        /sign-in refused with 401/,
+      );
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("a response with no cookie is an error, not an empty session", async () => {
+    const original = globalThis.fetch;
+    globalThis.fetch = async () => cookieResponse();
+    try {
+      await assert.rejects(() => signIn("http://localhost:3000", "s3cret"), /no session cookie/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("no token means no sign-in attempt", async () => {
+    // A deploy without a token needs no session, and calling the login route
+    // anyway would turn a healthy run into a failure.
+    assert.equal(await signIn("http://localhost:3000", ""), "");
+  });
+
+  test("the token is read from the environment or the local runtime env file", () => {
+    const original = process.env.ANIM_API_TOKEN;
+    try {
+      process.env.ANIM_API_TOKEN = "from-env";
+      assert.equal(resolveToken(), "from-env");
+    } finally {
+      if (original === undefined) delete process.env.ANIM_API_TOKEN;
+      else process.env.ANIM_API_TOKEN = original;
+    }
+    // The repo ships no committed token, and `.env.local` is gitignored, so with
+    // nothing in the environment the audit must find nothing rather than fail
+    // deep inside a fetch. It reports that it cannot audit, which is actionable.
+    assert.equal(typeof resolveToken(), "string");
   });
 });

@@ -1,7 +1,7 @@
 ---
 route: /agents
 viewport: desktop (1512×950) + mobile (390×844)
-mode: live bridge or degraded (503 banner when ANIM_API_TOKEN missing)
+mode: live bridge over the local transport, or degraded (503 banner when the bridge is off)
 ---
 # Screenshot reference
 

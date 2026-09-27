@@ -1,8 +1,5 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execMode, failureReason, runOnMesh } from "@/lib/data/exec-host";
 import type { AgentStatus } from "@/lib/types";
-
-const run = promisify(execFile);
 
 export type RemoteAgent = {
   id: string;
@@ -55,7 +52,8 @@ export type RemoteState =
   | { mode: "live"; inventory: RemoteInventory; latencyMs: number }
   | { mode: "unavailable"; reason: string; latencyMs: number };
 
-const HOST = process.env.ANIM_SSH_HOST ?? "root@72.61.141.91";
+const COLLECTOR = "/home/bor/.hermes/mesh-inventory.py";
+const COLLECTOR_HOME = "/home/bor";
 const TIMEOUT_MS = Number(process.env.ANIM_SSH_TIMEOUT_MS ?? 12_000);
 /** Hard output ceiling. A breached ceiling means we refuse the payload. */
 const MAX_BYTES = 512 * 1024;
@@ -64,32 +62,33 @@ const MAX_BYTES = 512 * 1024;
  * Read-only bridge to the Hermes mesh.
  *
  * Security posture:
- *  - the remote command is a fixed literal; nothing user-controlled is interpolated
+ *  - the collector command is a fixed literal; nothing user-controlled is interpolated
  *  - no secret is requested: the collector reads only *.md presence, config public
  *    fields, gateway_state.json and the public agent card
  *  - output is size-capped and JSON-parsed defensively
- *  - BatchMode forbids any interactive prompt, so a missing key fails closed
+ *  - the collector runs on whichever host holds the mesh, chosen by
+ *    `lib/data/exec-host`; the SSH branch keeps BatchMode so a missing key
+ *    fails closed rather than hanging on a prompt
  */
 export async function getRemoteInventory(): Promise<RemoteState> {
-  if (process.env.ANIM_SSH === "off") {
-    return { mode: "unavailable", reason: "ANIM_SSH=off", latencyMs: 0 };
+  if (execMode() === "off") {
+    return { mode: "unavailable", reason: "ANIM_EXEC_MODE=off", latencyMs: 0 };
   }
 
   const started = Date.now();
-  const command =
-    "HOME=/home/bor timeout 10 python3 /home/bor/.hermes/mesh-inventory.py 2>/dev/null";
+  const command = `HOME=${COLLECTOR_HOME} timeout 10 python3 ${COLLECTOR} 2>/dev/null`;
 
   try {
-    const { stdout } = await run("ssh", [
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "ConnectTimeout=5",
-      "-o",
-      "StrictHostKeyChecking=accept-new",
-      HOST,
-      command,
-    ], { timeout: TIMEOUT_MS, maxBuffer: MAX_BYTES, encoding: "utf8" });
+    const { stdout } = await runOnMesh({
+      localPaths: [COLLECTOR],
+      localArgv: ["python3", COLLECTOR],
+      sshCommand: command,
+      timeoutMs: TIMEOUT_MS,
+      maxBuffer: MAX_BYTES,
+      // The collector resolves the mesh root from HOME, so it is set explicitly
+      // rather than inherited from whatever account started the server.
+      env: { HOME: COLLECTOR_HOME },
+    });
 
     const latencyMs = Date.now() - started;
     const trimmed = stdout.trim();
@@ -107,13 +106,7 @@ export async function getRemoteInventory(): Promise<RemoteState> {
     return { mode: "live", inventory: parsed, latencyMs };
   } catch (err) {
     const latencyMs = Date.now() - started;
-    const message =
-      err instanceof Error && "stderr" in err && typeof err.stderr === "string" && err.stderr
-        ? err.stderr.trim().split("\n")[0]
-        : err instanceof Error
-          ? err.message
-          : "unknown ssh failure";
-    return { mode: "unavailable", reason: message, latencyMs };
+    return { mode: "unavailable", reason: failureReason(err), latencyMs };
   }
 }
 

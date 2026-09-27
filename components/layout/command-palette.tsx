@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/command";
 import { Kbd, Dot } from "@/components/ui/badge";
 import { STATUS_COLOR } from "@/components/dashboard/agent-glyph";
-import { formatPort, describePort } from "@/lib/format";
+import { formatPort, describePort, formatPercent } from "@/lib/format";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; weight?: "regular" | "fill" | "bold" }>> = {
   SquaresFour: SquaresFourIcon,
@@ -128,7 +128,7 @@ export function CommandPalette() {
               <Dot tone={STATUS_COLOR[agent.status]} />
               <span className="flex-1 font-medium text-ink">{agent.id}</span>
               <span className="font-mono text-[11px] text-ink-subtle">{formatPort(agent.port)}</span>
-              <span className="text-[11px] text-ink-subtle">{Math.round(agent.health)}%</span>
+              <span className="text-[11px] text-ink-subtle">{formatPercent(agent.health, 0)}</span>
             </CommandItem>
           ))}
         </CommandGroup>

@@ -24,6 +24,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
   const { state, refresh } = useSession();
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
+  const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
 
   const submit = useCallback(
@@ -31,6 +32,7 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
       event.preventDefault();
       setBusy(true);
       setError("");
+      setHint("");
       try {
         const response = await fetch("/api/session", {
           method: "POST",
@@ -44,9 +46,11 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
         }
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;
+          hint?: string;
           code?: string;
         };
         setError(body.error ?? "sign in failed");
+        setHint(body.hint ?? "");
         if (body.code === "auth_misconfigured") await refresh();
       } catch {
         setError("sign in request failed");
@@ -126,6 +130,9 @@ export function SessionGate({ children }: { children: React.ReactNode }) {
               aria-label="API token"
             />
             {error ? <p className="text-sm text-destructive">{error}</p> : null}
+            {hint ? (
+              <p className="text-[12px] leading-relaxed text-muted-foreground">{hint}</p>
+            ) : null}
             <Button type="submit" disabled={busy || !token.trim()}>
               {busy ? "Signing in…" : "Sign in"}
             </Button>

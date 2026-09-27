@@ -2,7 +2,7 @@ import { getRemoteInventory, type RemoteAgent, type RemoteInventory } from "@/li
 import { createSnapshot } from "@/lib/data/engine";
 import { readHierarchy } from "@/lib/data/registry";
 import { PROFILES } from "@/lib/data/profiles";
-import type { Agent, AgentStatus, MeshSnapshot, Series } from "@/lib/types";
+import type { Agent, AgentStatus, HeatCell, MeshSnapshot, Series } from "@/lib/types";
 
 /**
  * Derive the dashboard snapshot from the real Hermes host.
@@ -10,8 +10,13 @@ import type { Agent, AgentStatus, MeshSnapshot, Series } from "@/lib/types";
  * Honesty rules for this module:
  *  - agent roster, status, ports, peer counts and document coverage are measured
  *  - `health` is derived only from gateway state, never from an invented load
- *  - there is no time-series history on the host, so the series stays `synthetic`
- *    and the charts keep rendering their "simulated" warning
+ *  - there is no time-series history on the host, so the series and the heat grid
+ *    are EMPTY. An earlier version filled them from the local generator, which
+ *    meant a live deploy drew random numbers that moved on every poll and were
+ *    indistinguishable from telemetry. The charts now render their empty state
+ *    and say why, which is the only truthful option until the host exports
+ *    history. `series.synthetic` stays in the type so the simulated fallback can
+ *    still label itself.
  */
 
 const DEPARTMENTS: Record<string, string> = {
@@ -41,14 +46,17 @@ function statusFor(agent: RemoteAgent): AgentStatus {
 }
 
 /**
- * Only two real signals exist per agent, so health is a small honest scale
- * rather than a fabricated 0-100 performance score.
+ * Only two real signals exist per agent, and neither is a performance score.
+ *
+ * The old version returned 100 / 85 / 55 / 0, so a reachable agent read as
+ * "100" and a degraded one as "55" — numbers that look like measurements of
+ * quality but are a hand-picked ladder, and that render as a full or half meter
+ * in the roster. Nothing on the host reports a score, so the field is `null` and
+ * the UI shows an em dash. Reachable state is already carried by
+ * `Agent.status`, which is the honest place for it.
  */
-function healthFor(agent: RemoteAgent): number {
-  if (!agent.processRunning) return 0;
-  if (!agent.a2aReachable) return 55;
-  if (agent.agentCard.reachable) return 100;
-  return 85;
+function healthFor(): number | null {
+  return null;
 }
 
 function toAgent(agent: RemoteAgent): Agent {
@@ -65,7 +73,7 @@ function toAgent(agent: RemoteAgent): Agent {
     // rather than being borrowed from a simulated profile.
     model: agent.agentCard.name ?? "unknown",
     provider: "hermes",
-    health: healthFor(agent),
+    health: healthFor(),
     // The collector exposes no latency probe, uptime history, token counter,
     // queue depth, load or memory figure. These stay null so the roster and the
     // drawer render an em dash instead of a fabricated `0`/`100`. The inventory
@@ -86,21 +94,42 @@ function toAgent(agent: RemoteAgent): Agent {
   };
 }
 
-/** The collector exposes no historical series, so keep the labelled placeholder. */
-function syntheticSeries(now: number): Series {
-  return createSnapshot(now).series;
+/**
+ * No historical series exist on the host, so live mode reports none.
+ *
+ * This used to call the local generator, which is the worst of both worlds: the
+ * numbers were invented *and* the provenance flag said `synthetic`, so the UI
+ * did render a warning — but the chart underneath was still a fabricated
+ * throughput trace that reshuffled on every 5s poll, and the "simulated" badge
+ * was easy to miss next to a plausible-looking graph. Empty is honest; a
+ * labelled lie is still a lie.
+ *
+ * `labels` is empty too, so a consumer that zips labels against the numeric
+ * arrays cannot pair a real timestamp with an invented value.
+ */
+function noSeries(): Series {
+  return {
+    labels: [],
+    throughput: [],
+    latency: [],
+    errors: [],
+    tokens: [],
+    resolutionSec: 60,
+    synthetic: false,
+  };
 }
 
-function heatFromInventory(agents: Agent[]) {
-  // Heatmap cells are a 7x24 grid of per-agent load. With no load metric we must
-  // not draw one, so the grid is empty and the UI renders its empty state.
-  return agents.flatMap((agent) =>
-    Array.from({ length: 24 }, (_, hour) => ({
-      agent: agent.id,
-      hour,
-      load: 0,
-    })),
-  );
+/**
+ * The collector reports no load metric, so there is no heat grid to draw.
+ *
+ * The previous version returned 24 zero-valued cells per agent, which rendered a
+ * full, uniformly idle week heatmap — while the comment above it promised an
+ * empty grid and the empty state. 26 agents x 24 = 624 invented cells. Returning
+ * nothing lets `/analytics` show the empty state the code always claimed was
+ * the behaviour.
+ */
+function heatFromInventory(): HeatCell[] {
+  return [];
 }
 
 export type LiveMesh =
@@ -139,8 +168,8 @@ export async function getMeshSnapshotLive(): Promise<LiveMesh> {
     source: "live",
     agents,
     hierarchy: readHierarchy(),
-    series: syntheticSeries(now),
-    heat: heatFromInventory(agents),
+    series: noSeries(),
+    heat: heatFromInventory(),
     totals: {
       online,
       degraded,

@@ -9,10 +9,11 @@ that keeps the two apart.
 | Risk | Mitigation |
 |---|---|
 | A token is committed and pushed to public GitHub | `scripts/secret-scan.sh` blocks the commit; CI fails the push |
-| The dashboard leaks a token by serving agent files | Filename allowlist (`*.md` only) in the SSH bridge; `.env`/`auth.json` are never readable |
+| The dashboard leaks a token by serving agent files | Filename allowlist (`*.md` only) in the bridge; `.env`/`auth.json` are never readable |
 | A token is pasted into a doc or commit message | Scanner runs on staged content, not just the worktree |
 | Someone copies live agent config into the repo | `.gitignore` blocks `auth.json`, `*.pem`, `*.key`, `*.env*`, runtime state |
 | A later change silently widens the bridge allowlist | Rule 2 in `AGENTS.md`; the allowlist is a single exported constant |
+| The bridge is pointed at a shell with interpolated input | `execFile` argv arrays only; the SSH branch keeps `BatchMode=yes` |
 
 ## Forbidden, always
 
@@ -51,17 +52,38 @@ npm run verify                # scan + typecheck + lint + build
 `.github/workflows/secret-guard.yml` runs on every push and pull request. It
 performs two checks: the pattern scan, and a filename check that fails if any
 credential-shaped file is tracked at all.
+## The mesh bridge
 
-## The SSH bridge
+`lib/data/exec-host.ts` is the only code path that decides where mesh calls run.
+Its contract:
 
-`lib/data/remote.ts` is the only code path that touches the server. Its contract:
-
-- **Read-only.** It runs a fixed set of commands over `ssh`; there is no write path.
+- **Read-only.** It runs a fixed set of commands; there is no write path.
+- **Local by default on the mesh host.** The production deployment sets
+  `ANIM_EXEC_MODE=local`, so the collector, the `hermes` CLI and
+  `127.0.0.1:<port>` are reached directly and **no SSH channel is opened**. That
+  removes a privileged channel rather than adding one: the previous SSH hop ran
+  from the mesh host back to itself and failed with
+  `Permission denied (publickey,password)`, because root holds an
+  `authorized_keys` and no private key.
+- **SSH still supported, never implicit.** `ANIM_EXEC_MODE=ssh` (or `auto` on a
+  host that does not hold the mesh) uses the fixed target from
+  `ANIM_SSH_HOST`. It keeps `BatchMode=yes`, so a missing key fails closed
+  instead of blocking on a prompt.
 - **Filename allowlist.** Only `SOUL.md`, `AGENTS.md`, `IDENTITY.md`, `TOOLS.md`,
   `USER.md`, `HEARTBEAT.md`, `constitution.md` and `obsidian/*.md` are fetchable.
-  A requested name is rejected before the SSH call if it contains `/`, `..`, or is
+  A requested name is rejected before any call if it contains `/`, `..`, or is
   not on the list.
-- **Bounded.** Every call has a timeout, an output size cap, and a fixed
-  `BatchMode=yes` so it can never block on an interactive prompt.
-- **Degrades, never blocks.** A bridge failure returns a typed `unavailable` state;
-  the UI labels the degraded mode instead of pretending the data is live.
+- **Bounded.** Every call has a timeout, an output size cap, and the local branch
+  pins `HOME` so profile paths resolve identically under any starting account.
+- **No shell.** Calls go through `execFile` with an argv array. The prompt is one
+  argv entry, so nothing is word-split, globbed, or expanded.
+- **Degrades, never fabricates.** A bridge failure returns a typed `unavailable`
+  state; the UI labels the degraded mode instead of pretending the data is live.
+
+## Runtime secrets
+
+`/opt/anim-dashboard/.env.local` holds `ANIM_API_TOKEN` and the transport mode.
+It is mode 600 and gitignored (`.gitignore` blocks `.env*` except the example).
+Do not read it into a transcript, and do not print `ANIM_API_TOKEN` into tool
+output — the operator reads it on the host to paste into the login field.
+

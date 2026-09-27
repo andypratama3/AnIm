@@ -3,6 +3,32 @@
 This file exists so deferred findings do not get lost behind the assumption that
 "the build is green, therefore everything is complete."
 
+## Production console on the mesh host (RESOLVED)
+
+The console is deployed at `/opt/anim-dashboard` behind nginx
+(`hermes.andypratama.studio` → `127.0.0.1:3000`) on the same host as the mesh.
+Two faults followed from that and are now fixed:
+
+1. **Write endpoints refused everything.** No `.env` file existed, so
+   `ANIM_API_TOKEN` was unset, and `checkAuth` fails closed in production with
+   `503 auth_misconfigured` — by design. Fixed by generating the token into
+   `/opt/anim-dashboard/.env.local` (mode 600, gitignored). This was a
+   misconfiguration, not a code defect; the fail-closed behaviour stayed.
+2. **Read bridge was dead.** `lib/data/{remote,agent-chat,remote-probe}` each
+   shelled out to `ssh root@72.61.141.91` — from that host to itself. Root has an
+   `authorized_keys` and no private key, so every call returned
+   `Permission denied (publickey,password)`. `/api/mesh-live` gave `503`,
+   `/api/mesh` fell back to `simulated`, and chat could not start an agent.
+   Fixed by `lib/data/exec-host.ts`: the transport is chosen from what is
+   actually reachable, and production runs `ANIM_EXEC_MODE=local`, so the
+   collector, the `hermes` CLI and `127.0.0.1:<port>` are reached directly with
+   no SSH channel at all. SSH is retained only for a laptop pointed at a remote
+   mesh host, and still fails closed without a key.
+
+Still true, and deliberately not changed: `next start` binds `127.0.0.1`, and
+nginx is the only public listener. The console has no per-user identity, so peer
+review stays a declared name (see the deferred item below).
+
 ## A2A graph identity (DEFERRED — requires collector change)
 
 - Registry (`agents/registry.json`): 26 agents with `reports_to` hierarchy.

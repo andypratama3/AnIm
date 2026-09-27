@@ -12,11 +12,14 @@
  * Uses Node's built-in WebSocket and fetch, so nothing is added to package.json.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const OUT = process.env.AUDIT_OUT ?? "/tmp/anim-audit";
 const PORT = Number(process.env.CDP_PORT ?? 9333);
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Resolve a Chrome/Chromium binary so the same audit runs on a laptop and on
 // the ubuntu-latest CI runner.
 function resolveChrome() {
@@ -75,11 +78,68 @@ export async function readDeployMode(base) {
   try {
     const response = await fetch(`${base}/api/session`, { cache: "no-store" });
     const body = await response.json().catch(() => ({}));
-    return { misconfigured: body?.misconfigured === true };
+    return {
+      misconfigured: body?.misconfigured === true,
+      authRequired: body?.authRequired === true,
+      authenticated: body?.authenticated === true,
+    };
   } catch {
-    return { misconfigured: false };
+    return { misconfigured: false, authRequired: false, authenticated: false };
   }
 }
+
+/**
+ * Find the dashboard API token, without printing it.
+ *
+ * `ANIM_API_TOKEN` wins, then the local runtime env file. The value is never
+ * echoed: it is a bearer credential and this script writes a JSON report to
+ * /tmp. Only its presence and length are ever reported.
+ */
+export function resolveToken() {
+  const fromEnv = process.env.ANIM_API_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+  for (const name of [".env.local", ".env.production.local"]) {
+    const path = join(REPO, name);
+    if (!existsSync(path)) continue;
+    const match = readFileSync(path, "utf8").match(/^ANIM_API_TOKEN=(.*)$/m);
+    const value = match?.[1]?.trim().replace(/^["']|["']$/g, "");
+    if (value) return value;
+  }
+  return "";
+}
+
+/**
+ * Exchange the token for a session cookie, the same way the login form does.
+ *
+ * A deploy with `ANIM_API_TOKEN` set puts a sign-in card in front of every
+ * route until the browser holds a session, so an audit that never signs in
+ * measures a login form sixteen times and learns nothing about layout. The audit
+ * was printing "token configured" as a supported mode while being unable to
+ * audit it.
+ *
+ * Returns the raw `set-cookie` value, or `""` when the deploy needs no session.
+ * The cookie is HttpOnly, so it can only be injected over CDP — page JavaScript
+ * cannot set it.
+ */
+export async function signIn(base, token) {
+  if (!token) return "";
+  const response = await fetch(`${base}/api/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `sign-in refused with ${response.status}; check ANIM_API_TOKEN matches the deployment`,
+    );
+  }
+  const raw = response.headers.getSetCookie?.() ?? [];
+  const hit = raw.find((value) => value.startsWith(`${SESSION_COOKIE}=`));
+  if (!hit) throw new Error("sign-in returned no session cookie");
+  return hit.split(";")[0].split("=").slice(1).join("=");
+}
+
+const SESSION_COOKIE = "anim_session";
 
 const ROUTES = ["/", "/agents", "/activity", "/kanban", "/analytics", "/discussion", "/notes", "/settings"];
 const VIEWPORTS = [
@@ -96,6 +156,23 @@ async function main() {
   console.log(
     `mode: ${mode.misconfigured ? "no ANIM_API_TOKEN, writes refused by design" : "token configured"}`,
   );
+
+  // A token-protected deploy shows a sign-in card instead of the app until the
+  // browser holds a session, so the audit has to sign in exactly as the operator
+  // does or it measures the login form on every route.
+  let sessionCookie = "";
+  if (mode.authRequired && !mode.authenticated) {
+    const token = resolveToken();
+    if (!token) {
+      console.error(
+        "ABORT: this deploy requires a session and no ANIM_API_TOKEN is available to the " +
+          "audit. Export it, or sign in first, or audit a deploy without a token configured.",
+      );
+      process.exit(1);
+    }
+    sessionCookie = await signIn(BASE, token);
+    console.log(`mode: signed in with the configured token (${token.length} chars, not shown)`);
+  }
 
   const chrome = spawn(
     CHROME,
@@ -234,6 +311,24 @@ async function main() {
     // domain. Without this the whitelist could never match and every unreachable
     // bridge would fail the audit.
     await browser.send("Network.enable", {}, sessionId);
+    // HttpOnly cookies are invisible to page JavaScript, so the session the audit
+    // obtained has to be planted through the protocol before the first navigation.
+    if (sessionCookie) {
+      const url = new URL(BASE);
+      const { success } = await browser.send(
+        "Network.setCookie",
+        {
+          name: SESSION_COOKIE,
+          value: sessionCookie,
+          domain: url.hostname,
+          path: "/",
+          httpOnly: true,
+          sameSite: "Strict",
+        },
+        sessionId,
+      );
+      if (!success) throw new Error("chrome refused the session cookie");
+    }
     await browser.send(
       "Emulation.setDeviceMetricsOverride",
       { width: vp.width, height: vp.height, deviceScaleFactor: 1, mobile: vp.name === "mobile" },
@@ -269,9 +364,18 @@ async function main() {
           });
         }
         if (msg.method === "Runtime.exceptionThrown") {
+          const details = msg.params?.exceptionDetails;
+          // `exceptionDetails.text` is only ever the word "Uncaught", so reporting
+          // it alone produced a failure nobody could act on. The description
+          // carries the message and the top of the stack, which is the difference
+          // between a diagnosable report and a shrug.
+          const thrown = details?.exception?.description ?? details?.exception?.value ?? "";
+          const where = details?.url
+            ? ` @ ${details.url}:${(details.lineNumber ?? 0) + 1}`
+            : "";
           errors.push({
-            text: `exception: ${msg.params?.exceptionDetails?.text}`.slice(0, 240),
-            url: "",
+            text: `exception: ${thrown || details?.text || "unknown"}${where}`.slice(0, 240),
+            url: String(details?.url ?? ""),
           });
         }
       };

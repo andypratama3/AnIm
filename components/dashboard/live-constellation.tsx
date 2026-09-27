@@ -129,8 +129,10 @@ export function LiveConstellationPanel() {
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-ink">Mesh bridge unavailable</p>
             <p className="mt-1 text-[12px] text-ink-subtle">
-              {state.reason}. Set <code className="font-mono">ANIM_SSH</code> to enable the read-only bridge,
-              or check key access to the host.
+              {state.reason}. Set <code className="font-mono">ANIM_EXEC_MODE</code> to{" "}
+              <code className="font-mono">local</code> or{" "}
+              <code className="font-mono">ssh</code> to choose the transport, or check that the
+              collector is readable on the mesh host.
             </p>
           </div>
         </div>

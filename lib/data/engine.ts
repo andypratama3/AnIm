@@ -194,8 +194,12 @@ export function createSnapshot(
   };
 }
 
-export function meshHealthScore(agents: Agent[], totalLoad: number): number {
-  const health = agents.reduce((sum, a) => sum + a.health, 0) / agents.length;
+export function meshHealthScore(agents: Agent[], totalLoad: number): number | null {
+  // `health` is null unless measured, so it cannot be summed. Averaging only
+  // the measured agents keeps this honest, and yields null when none reported.
+  const measured = agents.map((a) => a.health).filter((h): h is number => typeof h === "number");
+  if (measured.length === 0) return null;
+  const health = measured.reduce((sum, h) => sum + h, 0) / measured.length;
   const pressure = clamp(totalLoad / 70, 0, 1.4);
   return Math.round(clamp(health - pressure * 14 + 4, 0, 100));
 }

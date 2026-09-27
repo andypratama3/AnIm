@@ -135,7 +135,7 @@ export default function AgentsPage() {
         header: "Uptime",
         cell: (info) => (
           <span className="font-mono text-[12px] text-ink-muted">
-            {info.getValue().toFixed(2)}%
+            {formatPercent(info.getValue(), 2)}
           </span>
         ),
       }),
@@ -178,7 +178,11 @@ export default function AgentsPage() {
       <PageHeader
         eyebrow="Command"
         title="Agents"
-        description="Every profile on the mesh, pinned to a gateway port with its own MCP toolset. Live state is read from the host; the table below is the simulated planning view."
+        description={`Every profile on the mesh, pinned to a gateway port with its own MCP toolset. ${
+          data?.source === "live"
+            ? "Roster, ports, peer counts and gateway state are read from the host; metrics the collector does not report render as an em dash."
+            : "The host bridge is unreachable, so this roster is the simulated planning view and is labelled as such."
+        }`}
         meta={
           <>
             <Badge tone="ok">
@@ -360,7 +364,7 @@ export default function AgentsPage() {
           <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-hairline pt-3">
             <AgentStrip agents={agents.slice(0, 4)} onPick={setFocusAgent} />
             <span className="text-[11px] text-ink-subtle">
-              success {formatPercent(data?.totals.successRate ?? 0)}
+              success {formatPercent(data?.totals.successRate)}
             </span>
           </div>
         </SectionCard>

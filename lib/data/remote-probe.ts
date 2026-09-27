@@ -1,12 +1,7 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-
+import { execMode, failureReason, runOnMesh } from "@/lib/data/exec-host";
 import { CHATTABLE_PROFILES, type ChatProfile } from "@/lib/data/agent-chat";
 import { portForProfile } from "@/lib/data/registry";
 
-const run = promisify(execFile);
-
-const HOST = process.env.ANIM_SSH_HOST ?? "root@72.61.141.91";
 const PROBE_TIMEOUT_MS = Number(process.env.ANIM_PROBE_TIMEOUT_MS ?? 15_000);
 const MAX_OUTPUT_BYTES = 8 * 1024;
 
@@ -32,12 +27,20 @@ export function isProbeProfile(value: unknown): value is ChatProfile {
  * HTTP request against its A2A endpoint, then reports what came back, so the
  * latency on screen is measured rather than asserted.
  *
- * The remote command is a fixed literal; the port comes from the registry and is
+ * The measured command is a fixed literal; the port comes from the registry and is
  * interpolated as a validated integer, never from request input. A profile the
  * registry has no port for is reported as unassigned rather than probed on a
  * guessed port, which would read as an outage.
+ *
+ * The probe dials `127.0.0.1`, so it only measures anything on the host that holds
+ * the mesh. `lib/data/exec-host` therefore runs it here whenever the mesh is
+ * local, and only reaches for SSH when this machine is not the mesh host.
  */
 export async function probeAgent(profile: string): Promise<ProbeResult> {
+  if (execMode() === "off") {
+    return { profile, port: 0, tcpConnected: false, connectMs: null, a2aStatus: null, a2aMs: null, error: "ANIM_EXEC_MODE=off" };
+  }
+
   const port = portForProfile(profile) ?? 0;
   const base: ProbeResult = {
     profile,
@@ -82,18 +85,15 @@ export async function probeAgent(profile: string): Promise<ProbeResult> {
   const encoded = Buffer.from(script, "utf8").toString("base64");
 
   try {
-    const { stdout } = await run(
-      "ssh",
-      [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=5",
-        HOST,
-        `echo ${encoded} | base64 -d | python3`,
-      ],
-      { timeout: PROBE_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8" },
-    );
+    const { stdout } = await runOnMesh({
+      // A reachable gateway port is the proof that the mesh is on this host, so
+      // the probe prefers the local transport and needs no separate config.
+      localPaths: [`/home/bor/.hermes/mesh-inventory.py`],
+      localArgv: ["python3", "-c", script],
+      sshCommand: `echo ${encoded} | base64 -d | python3`,
+      timeoutMs: PROBE_TIMEOUT_MS,
+      maxBuffer: MAX_OUTPUT_BYTES,
+    });
 
     const parsed = JSON.parse(`${stdout}`.trim().split("\n").pop() ?? "{}") as Partial<ProbeResult>;
     return {
@@ -105,8 +105,6 @@ export async function probeAgent(profile: string): Promise<ProbeResult> {
       error: typeof parsed.error === "string" ? parsed.error : null,
     };
   } catch (err) {
-    const detail =
-      err instanceof Error ? err.message.split("\n")[0] : "probe transport failed";
-    return { ...base, error: detail };
+    return { ...base, error: failureReason(err) };
   }
 }

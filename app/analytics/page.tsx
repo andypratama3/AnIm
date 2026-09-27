@@ -104,7 +104,7 @@ export default function AnalyticsPage() {
         [
           row.id,
           row.status,
-          row.health.toFixed(1),
+          row.health == null ? NOT_MEASURED : row.health.toFixed(1),
           cell(row.latency),
           cell(row.load),
           cell(row.tokens),
@@ -198,7 +198,9 @@ export default function AnalyticsPage() {
           hint={
             synthetic
               ? "generated locally, not measured"
-              : `${formatCompact((totals.tokens ?? 0) / Math.max(1, windowMinutes))} per minute`
+              : totals.tokens == null
+                ? "not reported by the collector"
+                : `${formatCompact(totals.tokens / Math.max(1, windowMinutes))} per minute`
           }
         />
         <StatCard
@@ -268,7 +270,7 @@ export default function AnalyticsPage() {
                       </div>
                     </TD>
                     <TD>
-                      <span className="font-mono text-[12px]">{Math.round(row.health)}</span>
+                      <span className="font-mono text-[12px]">{row.health == null ? NOT_MEASURED : Math.round(row.health)}</span>
                     </TD>
                     <TD>
                       <span className="font-mono text-[12px]">{formatMs(row.latency)}</span>
@@ -304,7 +306,7 @@ export default function AnalyticsPage() {
           <SectionCard title="Mesh composition" description="Where the health score comes from.">
             <div className="flex items-center justify-around gap-3">
               <RadialGauge
-                value={totals.successRate ?? 0}
+                value={totals.successRate}
                 size={116}
                 label={totals.successRate == null ? "not reported" : "success %"}
               />

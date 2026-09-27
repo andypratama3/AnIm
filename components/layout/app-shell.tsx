@@ -46,7 +46,11 @@ function SidebarFrame({ onNavigate }: { onNavigate?: () => void }) {
               <p className="text-[12px] font-medium">Mesh integrity</p>
               <p className="mt-0.5 text-[11px] leading-snug text-ink-subtle">
                 {data
-                  ? `${data.totals.online} online · ${data.totals.tasks} queued`
+                  ? `${data.totals.online} online · ${
+                      data.totals.tasks == null
+                        ? "queue depth not reported"
+                        : `${data.totals.tasks} queued`
+                    }`
                   : "Connecting to gateways"}
               </p>
             </div>

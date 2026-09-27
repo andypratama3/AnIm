@@ -114,7 +114,7 @@ export function AgentDrawer() {
               <p className="text-[13px] leading-relaxed text-ink-muted">{agent.summary}</p>
 
               <div className="grid grid-cols-2 gap-3">
-                <Metric label="Health" value={`${Math.round(agent.health)}%`} tone={STATUS_COLOR[agent.status]} />
+                <Metric label="Health" value={formatPercent(agent.health, 0)} tone={STATUS_COLOR[agent.status]} />
                 <Metric label="Latency" value={formatMs(agent.latencyMs)} />
                 <Metric label="Load" value={formatPercent(agent.load, 0)} />
                 <Metric label="Uptime" value={formatPercent(agent.uptimePct, 2)} />
@@ -149,9 +149,17 @@ export function AgentDrawer() {
                 <div>
                   <div className="mb-1.5 flex items-center justify-between text-[12px]">
                     <span className="text-ink-muted">Health score</span>
-                    <span className="font-mono text-ink">{agent.health.toFixed(1)}</span>
+                    <span className="font-mono text-ink">
+                      {agent.health == null ? NOT_MEASURED : agent.health.toFixed(1)}
+                    </span>
                   </div>
-                  <Meter value={agent.health} tone="var(--ok)" />
+                  {/* No meter without a measurement: a bar at 0% and a bar at 50%
+                      are equally invented, so an unmeasured score draws nothing. */}
+                  {agent.health == null ? (
+                    <p className="text-[11px] text-ink-subtle">Not reported by the collector.</p>
+                  ) : (
+                    <Meter value={agent.health} tone="var(--ok)" />
+                  )}
                 </div>
               </div>
 

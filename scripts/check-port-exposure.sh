@@ -3,24 +3,25 @@
 # Verify the agent mesh is reachable only from the machine that runs it.
 #
 # Ports 9900-9925 carry the A2A gateways. They hold peer tokens and the agent
-# cards, so they must never answer from the internet: the dashboard reaches them
-# over SSH, and nothing else needs them. This check is read-only and safe to run
-# at any time; it exits non-zero the moment that stops being true.
+# cards, so they must never answer from the internet: the dashboard reads them
+# over loopback, and nothing else needs them. This check is read-only and safe to
+# run at any time; it exits non-zero the moment that stops being true.
 #
 # Two ways to get this wrong, both checked:
 #   1. a gateway binding 0.0.0.0 (or any non-loopback address) instead of 127.0.0.1
 #   2. a firewall rule that opens the range from anywhere
 #
 # Usage: bash scripts/check-port-exposure.sh [host] [user]
+#   host "local" (or ANIM_EXEC_MODE=local) audits this machine without SSH,
+#   which is the default when the mesh lives here.
 
 set -euo pipefail
 
-HOST="${1:-${ANIM_SSH_HOST:-root@72.61.141.91}}"
 LOOPBACK="127.0.0.1|::1|\[::1\]"
+MODE="${ANIM_EXEC_MODE:-auto}"
+HOST="${1:-${ANIM_SSH_HOST:-root@72.61.141.91}}"
 
-echo "Checking mesh port exposure on ${HOST}"
-
-report=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${HOST}" 'bash -s' <<'REMOTE'
+read -r -d '' PROBE <<'REMOTE' || true
 set -uo pipefail
 range='99[0-2][0-9]'
 
@@ -50,10 +51,19 @@ else
   echo "no firewall tooling found"
 fi
 REMOTE
-) || {
-  echo "FAIL: could not reach ${HOST}" >&2
-  exit 2
-}
+
+# The mesh is on this host when its collector is readable here, so audit in place
+# rather than opening an SSH channel to ourselves.
+if [ "${MODE}" = "ssh" ] || { [ "${MODE}" = "auto" ] && [ "${HOST}" != "local" ] && [ ! -r /home/bor/.hermes/mesh-inventory.py ]; }; then
+  echo "Checking mesh port exposure on ${HOST} over ssh"
+  report=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "${HOST}" 'bash -s' <<<"${PROBE}") || {
+    echo "FAIL: could not reach ${HOST}" >&2
+    exit 2
+  }
+else
+  echo "Checking mesh port exposure on this host (local)"
+  report=$(bash -s <<<"${PROBE}")
+fi
 
 echo "${report}"
 

@@ -1,10 +1,8 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { execMode, failureReason, runOnMesh } from "@/lib/data/exec-host";
 
-const run = promisify(execFile);
-
-const HOST = process.env.ANIM_SSH_HOST ?? "root@72.61.141.91";
 const HERMES_BIN = "/home/bor/.local/bin/hermes";
+const HERMES_HOME = "/home/bor";
+const HERMES_PATH = "/home/bor/.local/bin:/usr/local/bin:/usr/bin:/bin";
 const CHAT_TIMEOUT_MS = Number(process.env.ANIM_CHAT_TIMEOUT_MS ?? 180_000);
 const MAX_OUTPUT_BYTES = 256 * 1024;
 export const MAX_PROMPT_CHARS = 4_000;
@@ -59,10 +57,11 @@ export type ChatResult =
  * Security posture:
  *  - `execFile` with an argv array, so nothing is ever word-split or globbed
  *  - the profile id is validated against CHATTABLE_PROFILES before spawning
- *  - the prompt is passed as a single argv entry; remote shell quoting is avoided
- *    entirely by asking the remote side for a python wrapper, not `sh -c`
- *  - BatchMode forbids prompts, and the child is hard-killed on timeout
+ *  - the prompt is passed as a single argv entry; no shell sees it
+ *  - the child is hard-killed on timeout
  *  - output is size-capped; a breached cap is reported, not truncated silently
+ *  - `HOME` and `PATH` are pinned, so the CLI resolves the same profile
+ *    directory whether it runs here or on the mesh host
  */
 export async function chatWithProfile(
   profile: string,
@@ -70,6 +69,10 @@ export async function chatWithProfile(
 ): Promise<ChatResult> {
   const started = Date.now();
   const elapsed = () => Date.now() - started;
+
+  if (execMode() === "off") {
+    return { ok: false, profile, error: "ANIM_EXEC_MODE=off", elapsedMs: elapsed() };
+  }
 
   if (!isChatProfile(profile)) {
     return { ok: false, profile: String(profile), error: "profile is not addressable", elapsedMs: elapsed() };
@@ -88,12 +91,13 @@ export async function chatWithProfile(
     };
   }
 
-  // Base64 keeps the prompt opaque to the remote shell: no quoting rules to get
-  // wrong, and no chance of a payload being read as a second argument.
+  // Base64 keeps the prompt opaque to the remote shell: the SSH branch needs a
+  // string it can hand to a python wrapper without any quoting rules to get
+  // wrong, and so cannot turn a payload into a second argument.
   const encoded = Buffer.from(text, "utf8").toString("base64");
 
   const command =
-    `HOME=/home/bor PATH=/home/bor/.local/bin:$PATH ` +
+    `HOME=${HERMES_HOME} PATH=${HERMES_PATH} ` +
     `python3 -c "import base64,subprocess,sys;` +
     `p=base64.b64decode(sys.argv[1]).decode('utf-8');` +
     `r=subprocess.run(['${HERMES_BIN}','-p',sys.argv[2],'-z',p],` +
@@ -103,25 +107,23 @@ export async function chatWithProfile(
     `"${encoded}" ${profile}`;
 
   try {
-    const { stdout, stderr } = await run(
-      "ssh",
-      [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=5",
-        HOST,
-        command,
-      ],
-      { timeout: CHAT_TIMEOUT_MS, maxBuffer: MAX_OUTPUT_BYTES, encoding: "utf8" },
-    );
+    const { stdout, stderr } = await runOnMesh({
+      // The CLI being present is what proves the mesh is on this host, so the
+      // deployed console talks to the profiles directly instead of over SSH.
+      localPaths: [HERMES_BIN],
+      localArgv: [HERMES_BIN, "-p", profile, "-z", text],
+      sshCommand: command,
+      timeoutMs: CHAT_TIMEOUT_MS,
+      maxBuffer: MAX_OUTPUT_BYTES,
+      env: { HOME: HERMES_HOME, PATH: HERMES_PATH },
+    });
 
-    const reply = `${stdout ?? ""}`.trim();
+    const reply = stdout.trim();
     if (Buffer.byteLength(reply, "utf8") > MAX_OUTPUT_BYTES) {
       return { ok: false, profile, error: "reply exceeded size cap", elapsedMs: elapsed() };
     }
     if (!reply) {
-      const detail = (stderr ?? "").trim().split("\n").slice(-3).join(" ");
+      const detail = stderr.trim().split("\n").slice(-3).join(" ");
       return {
         ok: false,
         profile,
@@ -131,13 +133,6 @@ export async function chatWithProfile(
     }
     return { ok: true, profile, reply, elapsedMs: elapsed() };
   } catch (err) {
-    const stderr = (err as { stderr?: unknown } | null)?.stderr;
-    const detail =
-      typeof stderr === "string" && stderr.trim()
-        ? stderr.trim().split("\n").slice(-3).join(" ")
-        : err instanceof Error
-          ? err.message
-          : "unknown failure";
-    return { ok: false, profile, error: detail || "chat transport failed", elapsedMs: elapsed() };
+    return { ok: false, profile, error: failureReason(err), elapsedMs: elapsed() };
   }
 }

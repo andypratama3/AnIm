@@ -40,11 +40,38 @@ overflow at **1512px** and **390px**.
 
 ## Live bridge
 
-`lib/data/remote.ts` runs `scripts/mesh-inventory.py` on the Hermes host over
-SSH and returns a typed snapshot.
+`lib/data/exec-host.ts` picks a transport and runs `scripts/mesh-inventory.py`,
+returning a typed snapshot. It is the only place that decides *where* a mesh call
+runs; `lib/data/remote.ts`, `lib/data/agent-chat.ts` and
+`lib/data/remote-probe.ts` all go through it.
 
-- Fixed host, user and script path. No caller-supplied command.
-- `BatchMode=yes`, hard timeouts, 512 KB output ceiling, JSON validated before use.
+| `ANIM_EXEC_MODE` | Behaviour |
+| --- | --- |
+| `auto` (default) | Local when the collector/CLI is on this filesystem, otherwise SSH |
+| `local` | Always here; fails closed if the mesh is not on this host |
+| `ssh` | Always SSH, for a laptop pointed at a remote mesh host |
+| `off` | No bridge; read routes return a typed `unavailable` state |
+
+**The production deployment runs on the mesh host** and is configured
+`ANIM_EXEC_MODE=local`. The collector, the `hermes` CLI and `127.0.0.1:<port>`
+are all local, so every call goes direct.
+
+That is not a stylistic choice. The console used to SSH to `72.61.141.91` from
+all three paths while itself running on `72.61.141.91`, and root holds an
+`authorized_keys` but no private key — so the hop answered `Permission denied
+(publickey,password)`. `/api/mesh-live` returned `503`, `/api/mesh` silently
+degraded to simulated data, and every chat turn failed at the transport. A
+loopback call has no key to misplace and no channel to open.
+
+Both transports keep the original guarantees:
+
+- Fixed command. No caller-supplied command is ever interpolated.
+- The profile id is validated against a hard allowlist before a process spawns;
+  the probe port comes from the registry as a validated integer.
+- Bounded: hard timeouts, a 512 KB output ceiling, JSON validated before use.
+- The local branch pins `HOME` so the collector and the CLI resolve the same
+  profile directory regardless of which account started the server.
+- The SSH branch keeps `BatchMode=yes`, so a missing key fails closed.
 - The script is read-only: it reads `registry.json`, `gateway_state`, agent cards
   and document presence, and returns counts and public fields only. It never
   returns env values, tokens, or file bodies.
@@ -104,7 +131,15 @@ for minutes, `lib/security/guard.ts` puts three limits in front of it:
 
 With `ANIM_API_TOKEN` unset the endpoint stays reachable, which is only
 acceptable for local development on a trusted machine. **Set it in any shared or
-public deployment.**
+public deployment** — the production host serves this over
+`hermes.andypratama.studio`, so it is not optional there. The value lives in
+`/opt/anim-dashboard/.env.local` (mode 600, gitignored). To read it for the login
+field, print it on the host yourself; never paste it into a doc, a commit, or a
+shared transcript:
+
+```
+grep '^ANIM_API_TOKEN=' /opt/anim-dashboard/.env.local | cut -d= -f2-
+```
 
 ### The write-guard contract
 
@@ -175,7 +210,7 @@ cannot leave its port label floating below it.
 
 `LiveConstellationPanel` polls `/api/mesh-live` every 15s and refetches when the
 tab becomes visible, showing a live dot and the age of the last read. Polling is
-used deliberately: the bridge is an on-demand SSH collect, so a websocket would
+used deliberately: the bridge is an on-demand collect, so a websocket would
 add a long-lived privileged channel for no gain.
 
 Polling refreshes what the host reports. It does not make a stopped gateway run —
@@ -190,9 +225,10 @@ without an explicit decision and a capacity check.
 
 **The mesh range is server-private and must stay that way.** A gateway binds
 `127.0.0.1`, never `0.0.0.0`. The ports carry agent cards and peer material, and
-nothing outside the host needs to reach them: the dashboard reads them over SSH,
-and the browser only ever talks to its own Next server. The host also runs
-`iptables` with `INPUT` policy `DROP`, opening just `22`, `80`, `443` and `icmp`.
+nothing outside the host needs to reach them: the console dials them over
+loopback, and the browser only ever talks to its own Next server. The host also
+runs `iptables` with `INPUT` policy `DROP`, opening just `22`, `80`, `443` and
+`icmp`.
 
 Verify it at any time — read-only, no writes to the server:
 
@@ -200,10 +236,10 @@ Verify it at any time — read-only, no writes to the server:
 npm run check:ports
 ```
 
-It exits non-zero if any mesh port binds a non-loopback address, or if a
-firewall rule opens the range. A future gateway started with the wrong bind
-address is the realistic way this breaks, and that is the case the check exists
-to catch.
+It audits this host in place (no SSH) and exits non-zero if any mesh port binds a
+non-loopback address, or if a firewall rule opens the range. A future gateway
+started with the wrong bind address is the realistic way this breaks, and that is
+the case the check exists to catch.
 
 Note that a port being closed does not mean the profile is unusable: the
 `hermes -p <profile>` CLI can address a profile whose gateway is not listening,
