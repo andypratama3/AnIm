@@ -380,7 +380,7 @@ function PeerCell({ agent }: { agent: Agent }) {
       <div className="min-w-0">
         <p className="truncate text-[13px] font-medium text-ink">{agent.id}</p>
         <p className="truncate font-mono text-[10px] text-ink-subtle">
-          :{agent.port} · {agent.role}
+          {agent.port == null ? "no port" : `:${agent.port}`} · {agent.role}
         </p>
       </div>
     </div>
@@ -396,7 +396,10 @@ function StatusCell({ status }: { status: AgentStatus }) {
   );
 }
 
-function HealthCell({ value }: { value: number }) {
+function HealthCell({ value }: { value: number | null }) {
+  if (value == null) {
+    return <span className="font-mono text-[12px] text-ink-subtle">—</span>;
+  }
   return (
     <div className="flex items-center gap-2">
       <span className="w-10 font-mono text-[12px] text-ink">{Math.round(value)}</span>
@@ -405,7 +408,10 @@ function HealthCell({ value }: { value: number }) {
   );
 }
 
-function LoadCell({ value }: { value: number }) {
+function LoadCell({ value }: { value: number | null }) {
+  if (value == null) {
+    return <span className="font-mono text-[12px] text-ink-subtle">—</span>;
+  }
   const tone = value >= 85 ? "var(--danger)" : value >= 65 ? "var(--warn)" : "var(--brand)";
   return (
     <div className="flex items-center gap-2">

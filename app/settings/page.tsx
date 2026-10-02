@@ -48,7 +48,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["T", "Toggle light / dark theme"],
   ["D", "Toggle compact density"],
   ["/", "Focus the search field"],
-  ["1 – 7", "Inspect a peer by index"],
+  ["1 – 9", "Inspect a peer by index"],
   ["Esc", "Close drawer, dialog or palette"],
 ];
 
@@ -172,10 +172,10 @@ export default function SettingsPage() {
             <Row icon={<PaintBrushIcon size={16} />} label="Reduce motion" hint="Disables parallax and float animations.">
               <Switch checked={reduceMotion} onCheckedChange={setReduceMotion} aria-label="Reduce motion" />
             </Row>
-            <Row icon={<RowsIcon size={16} />} label="Sound cues" hint="Play a soft tone on new critical events.">
+            <Row icon={<RowsIcon size={16} />} label="Sound cues" hint="Decorative toggle only. No sound is played anywhere in this console.">
               <Switch checked={sound} onCheckedChange={setSound} aria-label="Sound cues" />
             </Row>
-            <Row icon={<ShieldCheckIcon size={16} />} label="Anonymous telemetry" hint="Aggregate latency buckets only. No note contents.">
+            <Row icon={<ShieldCheckIcon size={16} />} label="Anonymous telemetry" hint="Decorative toggle only. Nothing is collected or sent.">
               <Switch checked={telemetry} onCheckedChange={setTelemetry} aria-label="Telemetry" />
             </Row>
           </div>
@@ -291,8 +291,9 @@ export default function SettingsPage() {
               ))}
             </div>
             <p className="mt-4 text-[12px] leading-relaxed text-ink-subtle">
-              Every profile mounts the same toolset. Calls are audited into the activity stream with the
-              originating peer, duration and token cost.
+              Tool names the simulated fallback attaches to agents. Live agents
+              advertise their own skills on the agent card; nothing is audited
+              per call, and no token cost is measured on the host.
             </p>
           </TabsContent>
         </Tabs>

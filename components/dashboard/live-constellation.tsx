@@ -156,7 +156,7 @@ export function LiveConstellationPanel() {
               {state.data.totals.meshLinksExpected} mesh pairs
             </Badge>
             <span className="font-mono text-[11px] text-ink-subtle">
-              ssh {state.data.latencyMs}ms · collect {state.data.collectMs}ms
+              bridge {state.data.latencyMs}ms · collect {state.data.collectMs}ms
             </span>
           </div>
 

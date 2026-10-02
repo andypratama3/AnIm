@@ -58,7 +58,12 @@ export function useNotes(filters: { folder?: string; q?: string }) {
   const params = new URLSearchParams();
   if (filters.folder) params.set("folder", filters.folder);
   if (filters.q) params.set("q", filters.q);
-  return useSWR<{ notes: Note[]; generatedAt: number }>(`/api/notes?${params.toString()}`, fetcher, {
+  return useSWR<{
+    notes: Note[];
+    folders: string[];
+    generatedAt: number;
+    source: { kind: string; live: boolean; reason?: string; path?: string };
+  }>(`/api/notes?${params.toString()}`, fetcher, {
     revalidateOnFocus: true,
   });
 }

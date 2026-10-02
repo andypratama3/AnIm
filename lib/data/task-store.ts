@@ -72,40 +72,14 @@ const STORE_PATH =
   process.env.ANIM_TASK_STORE ?? join(process.cwd(), ".data", "review-queue.json");
 
 /**
- * Fixed epoch so a first-run seed does not depend on wall-clock time. The seed
- * exists only until an operator writes to the store.
+ * Empty on first run — no invented history. The dashboard ships with zero
+ * review items; every row after that is an operator-created record with a
+ * real timestamp. Earlier versions seeded VERIFIED rows for work that was
+ * never reviewed here, which put claims of peer sign-off in front of the
+ * owner with no evidence behind them.
  */
-const SEED_EPOCH = 1758800000000;
-
 function seed(): StoreShape {
-  const make = (
-    id: string,
-    title: string,
-    owner: string,
-    reviewer: string,
-    state: State,
-    minutesAgo: number,
-  ): Task => ({
-    id,
-    title,
-    owner,
-    reviewer,
-    state,
-    evidence: [],
-    history: [{ state, at: SEED_EPOCH - minutesAgo * 60_000, by: owner, note: "seeded" }],
-    updatedAt: SEED_EPOCH - minutesAgo * 60_000,
-    createdAt: SEED_EPOCH - minutesAgo * 60_000,
-  });
-
-  return {
-    tasks: [
-      make("V-1", "19 new profiles created with 25 A2A peers each", "hermes-operator", "dashboard-engineer", "VERIFIED", 18),
-      make("V-2", "Pair-token matrix 26x25 rotated, 46 live pairs preserved", "security-engineer", "code-reviewer", "VERIFIED", 42),
-      make("V-3", "Dashboard throughput fabricated-metric defect", "dashboard-engineer", "code-reviewer", "VERIFIED", 6),
-      make("V-4", "Activation runbook for 19 stopped gateways", "hermes-operator", "devops-engineer", "PEER_REVIEWED", 95),
-      make("V-5", "Vault seed for 26 self-improvement logs", "knowledge-agent", "content-strategist", "IN_PROGRESS", 3),
-    ],
-  };
+  return { tasks: [] };
 }
 
 function isState(value: unknown): value is State {

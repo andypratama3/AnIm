@@ -43,8 +43,9 @@ export default function OverviewPage() {
   }
 
   const { agents, totals, series, hierarchy } = data;
-  const throughputNow = series.throughput.at(-1) ?? 0;
-  const throughputPrev = series.throughput.at(-4) ?? throughputNow;
+  const hasSeries = series.throughput.length > 0;
+  const throughputNow = hasSeries ? (series.throughput.at(-1) ?? 0) : 0;
+  const throughputPrev = hasSeries ? (series.throughput.at(-4) ?? throughputNow) : 0;
   const throughputDelta =
     throughputPrev === 0 ? 0 : ((throughputNow - throughputPrev) / throughputPrev) * 100;
   const unhealthy = totals.degraded + totals.offline;
@@ -90,14 +91,14 @@ export default function OverviewPage() {
         />
         <StatCard
           label="Throughput"
-          value={throughputNow}
+          value={hasSeries ? throughputNow : NOT_MEASURED}
           decimals={1}
-          suffix=" rps"
-          data={series.throughput}
+          suffix={hasSeries ? " rps" : undefined}
+          data={hasSeries ? series.throughput : undefined}
           tone="var(--brand)"
-          delta={throughputDelta}
+          delta={hasSeries ? throughputDelta : undefined}
           icon={<ChartLineUpIcon size={17} weight="duotone" />}
-          hint={`p95 ${formatMs(totals.p95Latency)}`}
+          hint={hasSeries ? `p95 ${formatMs(totals.p95Latency)}` : "no history exported by the host"}
           onClick={() => router.push("/analytics")}
         />
         <StatCard
@@ -177,7 +178,7 @@ export default function OverviewPage() {
                   <span className="block truncate text-[11px] text-ink-subtle">{agent.role}</span>
                 </span>
                 <span className="shrink-0 font-mono text-[11px] text-ink-subtle">
-                  {formatNumber(agent.queue)} q
+                  {agent.queue == null ? "—" : `${formatNumber(agent.queue)} q`}
                 </span>
               </button>
             ))}

@@ -87,22 +87,16 @@ gone. Either:
 Do not reintroduce a constant. `tests/unmeasured-metrics.test.mjs` will fail if a
 fabricated default comes back.
 
-## 3. Notes should read the real vault
+## 3. Notes read the real vault (done)
 
-`lib/data/vault.ts` exports `SEED_NOTES` and `/api/notes` serves them, so the
-content is invented. It is **labelled**: the route returns
-`source: { kind: "local", persisted: false, sharedWithAgents: false }`, and the
-page description says the notes live in the dashboard process only, are not
-written to disk, and are gone on restart. A dead "New note" button that created
-nothing has been removed rather than left as a control that lies.
-
-That labelling is the honest floor, not the destination. On the host, decide the
-source of truth — `hermes vault list` or the files under `/home/bor/.hermes/` —
+`/api/notes` lists `/home/bor/Documents/Obsidian/Hermes-Agent` read-only via
+`lib/data/hermes-vault.ts`: metadata in the listing, a body only for a path
+from that live listing, empty with a reason when unreachable. No seed data
+remains; the old `SEED_NOTES`/`VAULT_FOLDERS` module is deleted.
 then replace the seed in `/api/notes` with a read, using the same `exec-host`
-bridge and the same read-only posture as the collector. Keep `VAULT_FOLDERS` as a
-UI affordance while the contents are seeded, but do not let the folder names
-imply the notes came from Hermes when they did not. If a real reader lands, the
-page label has to change with it.
+bridge and the same read-only posture as the collector.
+
+Done: `/api/notes` reads the vault live (see §3 above). The page label matches.
 
 ## 4. Hierarchy should come from Hermes
 
@@ -119,15 +113,11 @@ same class of defect as the fabricated series.
 
 ## 5. Start the remaining gateways (optional, your call)
 
-19 of 26 registry entries are `state: "new"`: no port assigned, so they show an
-em dash wherever a port belongs, and their rows report whatever the collector
-finds — `installed` if the profile directory is there with a stopped gateway,
-`missing` if it is not. That is honest, but if you want a populated console the
-gateways have to run and the registry needs ports for them. The collector
-already reports the real state; nothing in the console needs to change.
-
-`9907`–`9925` is reserved and currently unallocated, so assigning those ports is
-a deliberate step with a capacity check attached. Do not start a gateway on the
+19 of 26 registry entries are `state: "new"`: port assigned, config + token
+wired, but the gateway is not started, so their rows report `installed` — the
+profile directory is there with a stopped gateway. Starting those 19 gateways
+is a host capacity decision with a memory check attached (each gateway holds
+~250 MB; the host currently runs 6 of 8 GB used). Do not start a gateway on the
 agent server without an explicit decision — rule 1 in `AGENTS.md`.
 
 Note the interaction with §1: more running gateways means more real history, but

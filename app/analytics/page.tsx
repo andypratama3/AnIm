@@ -85,10 +85,12 @@ export default function AnalyticsPage() {
   }
 
   const { series, totals, agents } = data;
-  const avgThroughput =
-    series.throughput.reduce((sum, value) => sum + value, 0) / series.throughput.length;
-  const peakLatency = Math.max(...series.latency);
-  const totalErrors = series.errors.reduce((sum, value) => sum + value, 0);
+  const hasSeries = series.throughput.length > 0;
+  const avgThroughput = hasSeries
+    ? series.throughput.reduce((sum, value) => sum + value, 0) / series.throughput.length
+    : null;
+  const peakLatency = hasSeries ? Math.max(...series.latency) : null;
+  const totalErrors = hasSeries ? series.errors.reduce((sum, value) => sum + value, 0) : null;
   // The window comes from the real bucket width, not an assumed 30s interval.
   const windowMinutes = (series.labels.length * series.resolutionSec) / 60;
   // The engine reports mean requests/second per bucket. Summing those buckets
@@ -129,9 +131,11 @@ export default function AnalyticsPage() {
       <PageHeader
         eyebrow="Workflow"
         title="Analytics"
-        description={`Rolling ${formatWindow(windowMinutes)}-minute window, ${series.resolutionSec}s buckets across all ${agents.length} peers.${
-          synthetic ? " Series is generated locally - the mesh host keeps no history." : ""
-        }`}
+        description={
+          hasSeries
+            ? `Rolling ${formatWindow(windowMinutes)}-minute window, ${series.resolutionSec}s buckets across all ${agents.length} peers.${synthetic ? " Series is generated locally - the mesh host keeps no history." : ""}`
+            : "No history exported by the host — the collector reports a point-in-time snapshot only, so charts and windowed stats stay empty."
+        }
         meta={
           <>
             <Badge tone={data.source === "live" ? "ok" : "neutral"}>
@@ -174,27 +178,27 @@ export default function AnalyticsPage() {
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Mean throughput"
-          value={avgThroughput}
+          value={avgThroughput ?? NOT_MEASURED}
           decimals={2}
-          suffix=" rps"
+          suffix={avgThroughput == null ? undefined : " rps"}
+          data={hasSeries ? series.throughput : undefined}
           tone="var(--brand)"
-          data={series.throughput}
           icon={<ChartLineUpIcon size={17} weight="duotone" />}
-          hint={`peak ${formatNumber(Math.max(...series.throughput))} rps`}
+          hint={hasSeries ? `peak ${formatNumber(Math.max(...series.throughput))} rps` : "no history exported by the host"}
         />
         <StatCard
           label="p95 latency"
           value={totals.p95Latency ?? NOT_MEASURED}
           tone="var(--brand-2)"
-          data={series.latency}
+          data={hasSeries ? series.latency : undefined}
           icon={<ClockIcon size={17} weight="duotone" />}
-          hint={`peak ${Math.round(peakLatency)} ms in window`}
+          hint={peakLatency == null ? "no history exported by the host" : `peak ${Math.round(peakLatency)} ms in window`}
         />
         <StatCard
           label="Token burn"
           value={totals.tokens ?? NOT_MEASURED}
           tone="var(--brand-3)"
-          data={series.tokens}
+          data={hasSeries ? series.tokens : undefined}
           icon={<CpuIcon size={17} weight="duotone" />}
           hint={
             synthetic
@@ -206,11 +210,11 @@ export default function AnalyticsPage() {
         />
         <StatCard
           label="Errors"
-          value={totalErrors}
-          tone={totalErrors > 0 ? "var(--danger)" : "var(--ok)"}
-          data={series.errors}
+          value={totalErrors ?? NOT_MEASURED}
+          tone={totalErrors == null || totalErrors === 0 ? "var(--ok)" : "var(--danger)"}
+          data={hasSeries ? series.errors : undefined}
           icon={<LightningIcon size={17} weight="duotone" />}
-          hint={totalErrors === 0 ? "clean window" : "inspect the activity log"}
+          hint={totalErrors == null ? "no history exported by the host" : totalErrors === 0 ? "clean window" : "inspect the activity log"}
         />
       </section>
 
@@ -280,13 +284,17 @@ export default function AnalyticsPage() {
                       <span className="font-mono text-[12px]">{formatPercent(row.load, 0)}</span>
                     </TD>
                     <TD>
-                      <Sparkline
-                        data={[row.throughput, row.throughput * 0.8, row.throughput * 1.1, row.throughput]}
-                        tone={STATUS_COLOR[row.status]}
-                        height={22}
-                        showDot={false}
-                        className="w-20"
-                      />
+                      {row.throughput > 0 ? (
+                        <Sparkline
+                          data={[row.throughput, row.throughput * 0.8, row.throughput * 1.1, row.throughput]}
+                          tone={STATUS_COLOR[row.status]}
+                          height={22}
+                          showDot={false}
+                          className="w-20"
+                        />
+                      ) : (
+                        <span className="font-mono text-[12px] text-ink-subtle">—</span>
+                      )}
                     </TD>
                     <TD>
                       <span className="font-mono text-[12px]">{formatCompact(row.tokens)}</span>

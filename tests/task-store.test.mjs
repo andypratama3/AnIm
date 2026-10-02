@@ -153,10 +153,10 @@ describe("durability", () => {
     assert.ok(Array.isArray(raw.tasks));
   });
 
-  test("a corrupt file degrades to the seed instead of crashing", async () => {
+  test("a corrupt file degrades to an empty queue instead of crashing", async () => {
     await writeFile(process.env.ANIM_TASK_STORE, "{ this is not json");
     const store = await mod.readStore();
-    assert.equal(store.tasks.length, 5);
+    assert.equal(store.tasks.length, 0);
     assert.ok(store.tasks.every((t) => typeof t.id === "string"));
   });
 
@@ -174,18 +174,18 @@ describe("durability", () => {
 
   test("a file without a tasks array is not trusted", async () => {
     await writeFile(process.env.ANIM_TASK_STORE, JSON.stringify({ tasks: "nope" }));
-    assert.equal((await mod.readStore()).tasks.length, 5);
+    assert.equal((await mod.readStore()).tasks.length, 0);
   });
 
-  test("resetStore restores the seed", async () => {
+  test("resetStore restores the empty queue", async () => {
     await write([task()]);
     const fresh = await mod.resetStore();
-    assert.equal(fresh.tasks.length, 5);
+    assert.equal(fresh.tasks.length, 0);
     const onDisk = JSON.parse(await readFile(process.env.ANIM_TASK_STORE, "utf8"));
-    assert.equal(onDisk.tasks.length, 5);
+    assert.equal(onDisk.tasks.length, 0);
   });
 
-  test("the seed is deterministic, so first run does not depend on the clock", async () => {
+  test("first run starts empty and stays deterministic", async () => {
     const a = await mod.readStore();
     const b = await mod.readStore();
     assert.deepEqual(

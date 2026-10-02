@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   return Response.json(store, { headers: guardHeaders() });
 }
 
-/** Restore the seeded queue. Exposed so the demo state can be re-run. */
+/** Clear the review queue. The queue starts empty; this restores that state. */
 export async function DELETE(request: Request) {
   const origin = checkOrigin(request);
   if (!origin.ok) {

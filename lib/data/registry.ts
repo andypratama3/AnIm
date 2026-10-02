@@ -10,9 +10,10 @@ import path from "node:path";
  * It used to be duplicated in two places in code, and the copies had already
  * drifted apart: `remote-probe.ts` claimed `frontend` was on 9907 while the
  * registry said 9905, which meant a live agent was probed on a dead port and
- * reported offline. The live seven are the ones the registry has ports for;
- * the nineteen new profiles have no port assigned yet, and this module reports
- * that honestly instead of guessing one.
+ * reported offline. All 26 profiles now carry an assigned port (9900–9925,
+ * synced with the host registry); the 7 running gateways answer, the 19
+ * stopped ones report honestly as installed-but-stopped, and this module
+ * reports `null` only when the registry truly has no port.
  */
 
 export type RegistryAgent = {

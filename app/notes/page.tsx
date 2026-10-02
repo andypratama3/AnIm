@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { motion, AnimatePresence } from "motion/react";
@@ -27,6 +27,155 @@ import { SegmentedControl } from "@/components/dashboard/page-header";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+/**
+ * Reader for one vault note. Keyed by note path at the call site, so
+ * selecting another note remounts this component and its state resets
+ * without any render-time setState. The listing carries metadata only;
+ * the body is fetched from /api/notes?path= on mount.
+ */
+function NoteReader({ path }: { path: string }) {
+  const [body, setBody] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, copy] = useCopyToClipboard();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/notes?path=${encodeURIComponent(path)}`, {
+          cache: "no-store",
+        });
+        const payload = (await response.json()) as { note?: { body?: string } };
+        if (!cancelled && typeof payload.note?.body === "string") {
+          setBody(payload.note.body);
+        } else if (!cancelled) {
+          setBody(null);
+        }
+      } catch {
+        if (!cancelled) setBody(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  if (loading) {
+    return (
+      <p className="px-5 py-10 text-center text-[12px] text-ink-subtle">
+        Loading note from the vault…
+      </p>
+    );
+  }
+
+  if (body == null) {
+    return (
+      <EmptyState
+        icon={<NotebookIcon size={22} />}
+        title="Note unreadable"
+        description="The listing is live but this body could not be read from disk."
+      />
+    );
+  }
+
+  return (
+    <>
+      <div className="flex justify-end px-5 pt-3 sm:px-7">
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={async () => {
+            await copy(body);
+            toast.success("Markdown copied", { description: path });
+          }}
+        >
+          {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
+          Copy markdown
+        </Button>
+      </div>
+      <article className="prose-anim max-h-[46rem] overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Headings are demoted by one level on purpose. The page's own
+            // <h1> is "Notes", so a note whose body opens with `# Title` —
+            // which is how most vault notes are written — would otherwise
+            // render a second <h1> and flatten the outline.
+            h1: ({ children }) => (
+              <h2 className="mt-0 text-[17px] font-semibold tracking-[-0.02em]">
+                {children}
+              </h2>
+            ),
+            h2: ({ children }) => (
+              <h3 className="mt-7 text-[15px] font-semibold tracking-[-0.02em]">
+                {children}
+              </h3>
+            ),
+            h3: ({ children }) => (
+              <h4 className="mt-5 text-[14px] font-semibold text-ink">{children}</h4>
+            ),
+            p: ({ children }) => (
+              <p className="mt-3 text-[13.5px] leading-[1.75] text-ink-muted">{children}</p>
+            ),
+            ul: ({ children }) => (
+              <ul className="mt-3 space-y-1.5 pl-1 text-[13.5px] text-ink-muted">{children}</ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[13.5px] text-ink-muted">
+                {children}
+              </ol>
+            ),
+            li: ({ children }) => <li className="leading-[1.7]">{children}</li>,
+            code: ({ children }) => (
+              <code className="rounded-lg bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] text-ink">
+                {children}
+              </code>
+            ),
+            pre: ({ children }) => (
+              <pre className="mt-4 overflow-x-auto rounded-2xl border border-hairline bg-surface-2/70 p-4 font-mono text-[12px] leading-relaxed text-ink">
+                {children}
+              </pre>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote className="mt-4 border-l-2 border-brand/50 bg-brand/5 py-2 pl-4 text-[13px] italic text-ink-muted">
+                {children}
+              </blockquote>
+            ),
+            a: ({ children, href }) => (
+              <a
+                href={href}
+                className="text-brand underline-offset-4 transition-colors hover:text-brand-2 hover:underline"
+              >
+                {children}
+              </a>
+            ),
+            table: ({ children }) => (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full border-collapse text-[12.5px]">{children}</table>
+              </div>
+            ),
+            th: ({ children }) => (
+              <th className="border-b border-hairline px-3 py-2 text-left font-semibold text-ink">
+                {children}
+              </th>
+            ),
+            td: ({ children }) => (
+              <td className="border-b border-hairline px-3 py-2 text-ink-muted">
+                {children}
+              </td>
+            ),
+            hr: () => <hr className="my-6 border-hairline" />,
+          }}
+        >
+          {body}
+        </ReactMarkdown>
+      </article>
+    </>
+  );
+}
+
 export default function NotesPage() {
   const [folder, setFolder] = useState("all");
   const [query, setQuery] = useState("");
@@ -34,13 +183,13 @@ export default function NotesPage() {
   const [wide, setWide] = useState(false);
   const debounced = useDebouncedValue(query, 220);
   const { data, isLoading } = useNotes({ q: debounced });
-  const [copied, copy] = useCopyToClipboard();
 
   const notes = useMemo(() => data?.notes ?? [], [data]);
   const folders = useMemo(
-    () => Array.from(new Set(notes.map((note) => note.folder))),
-    [notes],
+    () => data?.folders ?? Array.from(new Set(notes.map((note) => note.folder))),
+    [data, notes],
   );
+  const live = (data as { source?: { live?: boolean } } | undefined)?.source?.live !== false;
 
   const visible = useMemo(
     () => (folder === "all" ? notes : notes.filter((note) => note.folder === folder)),
@@ -57,13 +206,14 @@ export default function NotesPage() {
       <PageHeader
         eyebrow="Workflow"
         title="Notes"
-        description="A working notes surface for this dashboard. These notes live in the dashboard process only: no agent reads them, nothing is written to disk, and they are gone on restart."
+        description="The real Hermes Obsidian vault on this host, read-only. Selecting a note loads its body from disk; search filters the live listing."
         meta={
           <>
             <Badge tone="brand">
               <HardDrivesIcon size={12} />
               <span className="font-mono">{VAULT_PATH}</span>
             </Badge>
+            <Badge tone={live ? "ok" : "warn"}>{live ? "vault live" : "vault unreachable"}</Badge>
             <Badge tone="neutral">{notes.length} notes</Badge>
             <Badge tone="neutral">
               {formatBytes(notes.reduce((sum, note) => sum + note.bytes, 0))}
@@ -71,28 +221,14 @@ export default function NotesPage() {
           </>
         }
         actions={
-          <>
-            <Button
-              variant="glass"
-              size="sm"
-              onClick={() => setWide(!wide)}
-            >
-              <ArrowsOutSimpleIcon size={15} />
-              {wide ? "Narrow" : "Focus"}
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={async () => {
-                if (!current) return;
-                await copy(current.body);
-                toast.success("Markdown copied", { description: current.path });
-              }}
-            >
-              {copied ? <CheckIcon size={15} /> : <CopyIcon size={15} />}
-              Copy markdown
-            </Button>
-          </>
+          <Button
+            variant="glass"
+            size="sm"
+            onClick={() => setWide(!wide)}
+          >
+            <ArrowsOutSimpleIcon size={15} />
+            {wide ? "Narrow" : "Focus"}
+          </Button>
         }
       />
 
@@ -123,7 +259,7 @@ export default function NotesPage() {
               onChange={setFolder}
               options={[
                 { value: "all", label: "All", count: notes.length },
-                ...folders.map((item) => ({
+                ...folders.map((item: string) => ({
                   value: item,
                   label: item,
                   count: notes.filter((note) => note.folder === item).length,
@@ -213,89 +349,7 @@ export default function NotesPage() {
           }
         >
           {current ? (
-            <article className="prose-anim max-h-[46rem] overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  // Headings are demoted by one level on purpose. The page's own
-                  // <h1> is "Notes", so a note whose body opens with `# Title` —
-                  // which is how most vault notes are written — would otherwise
-                  // render a second <h1> and flatten the outline. The note's
-                  // title is already shown in the header above.
-                  h1: ({ children }) => (
-                    <h2 className="mt-0 text-[17px] font-semibold tracking-[-0.02em]">
-                      {children}
-                    </h2>
-                  ),
-                  h2: ({ children }) => (
-                    <h3 className="mt-7 text-[15px] font-semibold tracking-[-0.02em]">
-                      {children}
-                    </h3>
-                  ),
-                  h3: ({ children }) => (
-                    <h4 className="mt-5 text-[14px] font-semibold text-ink">{children}</h4>
-                  ),
-                  p: ({ children }) => (
-                    <p className="mt-3 text-[13.5px] leading-[1.75] text-ink-muted">{children}</p>
-                  ),
-                  ul: ({ children }) => (
-                    <ul className="mt-3 space-y-1.5 pl-1 text-[13.5px] text-ink-muted">{children}</ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-[13.5px] text-ink-muted">
-                      {children}
-                    </ol>
-                  ),
-                  li: ({ children }) => <li className="leading-[1.7]">{children}</li>,
-                  code: ({ children, className: codeClass }) =>
-                    codeClass ? (
-                      <code className="rounded-lg bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] text-ink">
-                        {children}
-                      </code>
-                    ) : (
-                      <code className="rounded-lg bg-surface-3 px-1.5 py-0.5 font-mono text-[12px] text-ink">
-                        {children}
-                      </code>
-                    ),
-                  pre: ({ children }) => (
-                    <pre className="mt-4 overflow-x-auto rounded-2xl border border-hairline bg-surface-2/70 p-4 font-mono text-[12px] leading-relaxed text-ink">
-                      {children}
-                    </pre>
-                  ),
-                  blockquote: ({ children }) => (
-                    <blockquote className="mt-4 border-l-2 border-brand/50 bg-brand/5 py-2 pl-4 text-[13px] italic text-ink-muted">
-                      {children}
-                    </blockquote>
-                  ),
-                  a: ({ children, href }) => (
-                    <a
-                      href={href}
-                      className="text-brand underline-offset-4 transition-colors hover:text-brand-2 hover:underline"
-                    >
-                      {children}
-                    </a>
-                  ),
-                  table: ({ children }) => (
-                    <div className="mt-4 overflow-x-auto">
-                      <table className="w-full border-collapse text-[12.5px]">{children}</table>
-                    </div>
-                  ),
-                  th: ({ children }) => (
-                    <th className="border-b border-hairline px-3 py-2 text-left font-semibold text-ink">
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children }) => (
-                    <td className="border-b border-hairline px-3 py-2 text-ink-muted">
-                      {children}
-                    </td>
-                  ),
-                  hr: () => <hr className="my-6 border-hairline" />,
-                }}
-              >
-                {current.body}
-              </ReactMarkdown>
-            </article>
+            <NoteReader key={current.id} path={current.path} />
           ) : (
             <EmptyState
               icon={<NotebookIcon size={22} />}

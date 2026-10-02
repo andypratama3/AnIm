@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChatCircleDotsIcon,
   PaperPlaneTiltIcon,
   SealCheckIcon,
   ShieldWarningIcon,
@@ -71,6 +70,98 @@ const PHASE_TONE: Record<Phase, string> = {
   BLOCKED: "warn",
   FAILED: "danger",
 };
+
+type A2AEntry = {
+  ts: number;
+  direction: "inbound" | "outbound";
+  peer: string;
+  taskId: string;
+  summary: string;
+};
+
+function A2ATraffic() {
+  const [entries, setEntries] = useState<A2AEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [reason, setReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/a2a?limit=30", { cache: "no-store" });
+        const body = (await response.json()) as {
+          entries?: A2AEntry[];
+          total?: number;
+          reason?: string;
+        };
+        if (cancelled) return;
+        if (Array.isArray(body.entries)) {
+          setEntries(body.entries);
+          setTotal(body.total ?? body.entries.length);
+          setReason(null);
+        } else {
+          setReason(body.reason ?? "unavailable");
+        }
+      } catch {
+        if (!cancelled) setReason("unreachable");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (reason) {
+    return (
+      <p className="py-6 text-center text-[12px] text-ink-subtle">
+        A2A traffic unavailable: {reason}.
+      </p>
+    );
+  }
+
+  if (entries.length === 0) {
+    return (
+      <p className="py-6 text-center text-[12px] text-ink-subtle">
+        No A2A exchanges recorded yet. Send two agents a task and it appears here.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-ink-subtle">
+        Last {entries.length} of {total} recorded exchanges, newest first.
+      </p>
+      <ul className="max-h-80 space-y-1.5 overflow-y-auto">
+        {entries.map((entry) => (
+          <li
+            key={`${entry.taskId}-${entry.ts}`}
+            className="flex items-start gap-2.5 rounded-xl border border-hairline bg-surface-2/50 px-3 py-2"
+          >
+            <span
+              className={`mt-1 size-1.5 shrink-0 rounded-full ${
+                entry.direction === "inbound" ? "bg-brand" : "bg-ok"
+              }`}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="flex flex-wrap items-center gap-x-2 text-[12px]">
+                <span className="font-mono font-medium">{entry.peer}</span>
+                <span className="text-ink-subtle">{entry.direction}</span>
+                <span className="font-mono text-[10.5px] text-ink-subtle">
+                  {new Date(entry.ts).toLocaleString("en-GB")}
+                </span>
+              </p>
+              <p className="mt-0.5 break-words text-[12px] text-ink-muted">
+                {entry.summary || entry.taskId}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 
 function DiscussionConsole() {
   const [profiles, setProfiles] = useState<string[]>([]);
@@ -369,6 +460,7 @@ function DiscussionConsole() {
     }
   }, [loadQueue]);
 
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -630,19 +722,9 @@ function DiscussionConsole() {
 
       <SectionCard
         title="What the agents are doing"
-        description="Peer discussion and delegation, read from the mesh event stream."
+        description="Real A2A exchanges from the Hermes audit log on this host."
       >
-        <div className="flex flex-col items-center gap-2 py-6 text-center">
-          <ChatCircleDotsIcon size={22} className="text-ink-subtle" />
-          <p className="text-[12.5px] text-ink-muted">
-            Live A2A discussion capture is not wired to the event bus yet.
-          </p>
-          <p className="max-w-lg text-[11.5px] text-ink-subtle">
-            The Activity route shows the current event stream. Once the gateway publishes A2A
-            envelopes to a readable sink, this panel becomes the transcript view instead of a
-            placeholder.
-          </p>
-        </div>
+        <A2ATraffic />
       </SectionCard>
     </div>
   );

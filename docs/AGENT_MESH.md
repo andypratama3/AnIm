@@ -9,19 +9,20 @@ console reads that file for ports and hierarchy — never a copy of a port table
 in code, which drifted once already (`frontend` was probed on 9907 while the
 registry said 9905; `tests/registry-ports.test.mjs` now fails if that returns).
 
-## Scale: 26 profiles, 7 gateways
+## Scale: 26 profiles, 7 gateways running, 26 ports assigned
 
 | | count | meaning |
 |---|---|---|
-| `state: "existing"` | 7 | profile present, gateway listening, port assigned |
-| `state: "new"` | 19 | profile defined in the registry, no port assigned, gateway not started |
+| `state: "existing"` | 7 | profile present, gateway listening |
+| `state: "new"` | 19 | profile defined, config + token wired, gateway not started |
 
-Only the 7 existing profiles carry a port (**9900–9906**). The other 19 report
-`port: null` and the console renders `—`, because a guessed port would report a
-probed agent offline when it was never probed. `9907`–`9925` is **reserved, not
-allocated**: no registry entry claims it, so nothing binds it. Starting those
-gateways is a host decision, not a console change — see
-`docs/SERVER-DEFERRED.md`.
+All 26 registry entries carry an assigned port (**9900–9925**), matching
+`/home/bor/.hermes/registry.json`. The 7 running gateways (**9900–9906**)
+report `running`; the 19 without a listener report `installed` and the console
+renders them as stopped-but-wired, never as missing. Starting those 19
+gateways is a host capacity decision, not a console change — see
+`docs/SERVER-DEFERRED.md`. A2A ports on this host are the only assigned ones:
+verify against the registry before probing anything.
 
 A stopped gateway does not make a profile unusable: `hermes -p <profile>` can
 address a profile whose gateway is not listening.
@@ -159,10 +160,10 @@ Agents/          one folder per agent for self-improvement notes
 
 Every note carries YAML frontmatter and uses `[[wiki-links]]`. No secrets, ever.
 
-**`/notes` in the console does not read this vault.** It serves
-`SEED_NOTES` from `lib/data/vault.ts`, in process memory, and says so in its
-page description and its `source` payload. Wiring the real vault is a host-side
-task: `docs/HERMES-LOCAL-SETUP.md` §3.
+**`/notes` in the console reads the real vault.** `/api/notes` lists
+`/home/bor/Documents/Obsidian/Hermes-Agent` read-only via `lib/data/hermes-vault.ts`
+and serves a body only for a path from that live listing. When the vault is
+unreachable the notes array is empty and the response says why.
 
 ## Remote layout
 

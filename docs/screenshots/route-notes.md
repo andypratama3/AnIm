@@ -21,8 +21,8 @@ Executed on every run, on both viewports:
 Route-specific, checked by reading the rendered page in this audit run and by the
 regression tests listed in [SERVER-DEFERRED](../SERVER-DEFERRED.md):
 
-- The page says where the notes live: in the console process, not written to disk, gone on restart.
-- `VAULT_FOLDERS` filters the list. There is no control that looks like it creates a note, because there is none that does.
+- The page says where the notes live: the real Hermes vault on this host, read-only.
+- The listing carries metadata only; a body loads per note from the live listing.
 
 ## What has not been verified
 

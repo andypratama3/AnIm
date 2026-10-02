@@ -55,15 +55,21 @@ describe("registry is the single source of port truth", () => {
     }
   });
 
-  test("a profile with no assigned port reports null, not a guess", () => {
+  test("every registry profile has an assigned port inside the mesh range", () => {
     const registry = readRegistry();
-    const unassigned = registry.agents.filter((a) => typeof a.port !== "number");
-    assert.ok(unassigned.length > 0, "the registry should still have unassigned profiles");
-    for (const agent of unassigned) {
+    // All 26 host profiles carry an assigned port (9900-9925, synced with the
+    // host registry). Probing an unassigned port would report a live agent as
+    // offline, so the registry is the only place a port may come from.
+    assert.equal(registry.agents.length, 26, "registry must hold the full 26-profile mesh");
+    for (const agent of registry.agents) {
+      assert.ok(
+        typeof agent.port === "number" && agent.port >= 9900 && agent.port <= 9925,
+        `${agent.id} has no assigned port in the 9900-9925 range`,
+      );
       assert.equal(
         portForProfile(agent.id),
-        null,
-        `${agent.id} has no port and must not resolve to one`,
+        agent.port,
+        `${agent.id} must resolve to its registry port`,
       );
     }
   });
@@ -141,7 +147,7 @@ describe("a model the host never reported reads as unmeasured", () => {
 
   test("a real value passes through unchanged", async () => {
     const { describeModel } = await import("../lib/format.ts");
-    assert.equal(describeModel("thinkingmachines/inkling:free"), "thinkingmachines/inkling:free");
+    assert.equal(describeModel("oc/muse-spark-1.3-contributor-free"), "oc/muse-spark-1.3-contributor-free");
   });
 
   test("the live path reports no model, and the roster says so", () => {

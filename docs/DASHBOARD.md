@@ -218,16 +218,16 @@ used deliberately: the bridge is an on-demand collect, so a websocket would
 add a long-lived privileged channel for no gain.
 
 Polling refreshes what the host reports. It does not make a stopped gateway run —
-7 gateways are live and 19 profiles have no port and no running gateway, and the UI says so.
+7 gateways are live and 19 profiles are wired but stopped, and the UI says so.
 
 ## Ports
 
-`9900`–`9925` is the **reserved** range for the mesh. It is not fully
-allocated: only the 7 existing profiles claim a port (**9900–9906**), and
-`9907`–`9925` is held in reserve with no registry entry and no listener. A
-profile with no port reports `port: null` and the UI renders `—`, because
-probing a guessed port reports a live agent as offline. `tests/registry-ports.test.mjs`
-fails if a module hardcodes a mesh port again, or if two profiles claim one.
+`9900`–`9925` is the **assigned** range for the mesh. All 26 registry entries
+carry a port (**9900–9925**, synced with the host registry): the 7 running
+gateways answer, the 19 stopped ones report `installed` and render as stopped,
+never as missing. `tests/registry-ports.test.mjs` fails if the registry drops
+below 26 assigned ports, if a module hardcodes a mesh port again, or if two
+profiles claim one.
 
 **The mesh range is server-private and must stay that way.** A gateway binds
 `127.0.0.1`, never `0.0.0.0`. The ports carry agent cards and peer material, and
@@ -347,7 +347,7 @@ does not export the measurement. They are specified, per field, in
   both to `"unknown"` and `describeModel()` renders the em dash, so the roster
   cannot present an agent's card name as if it were a model.
 
-`/notes` is a fifth: it serves `SEED_NOTES` from `lib/data/vault.ts` in
-process memory, and the page description, the route metadata and the route's
-`source` payload all say so (`persisted: false`, `sharedWithAgents: false`). It
-is not the Obsidian vault, even though the folder names are Obsidian's.
+`/notes` reads the real Hermes Obsidian vault read-only
+(`lib/data/hermes-vault.ts`): the listing carries metadata only, a body is
+served only for a path from that live listing, and an unreachable vault yields
+an empty list with a reason — never invented notes.

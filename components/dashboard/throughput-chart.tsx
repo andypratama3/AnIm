@@ -121,6 +121,22 @@ export function ThroughputChart({
   const data = useMemo(() => sliceByWindow(series, options, effective), [series, options, effective]);
 
   const windowed = effective === "all";
+  if (data.length === 0) {
+    return (
+      <Card tone="plate" className={className}>
+        <div className="px-5 pt-5 sm:px-6 sm:pt-6">
+          <h2 className="text-[16px] font-semibold tracking-[-0.02em]">{title}</h2>
+          <p className="mt-1 text-[12px] text-ink-subtle">
+            No history exported by the host — the collector reports a
+            point-in-time snapshot only.
+          </p>
+        </div>
+        <div className="px-5 pb-5 sm:px-6 sm:pb-6">
+          <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
+        </div>
+      </Card>
+    );
+  }
   const total = data.reduce((sum, row) => sum + row.throughput, 0);
   const errors = data.reduce((sum, row) => sum + row.errors, 0);
   const peak = data.reduce((max, row) => Math.max(max, row.throughput), 0);
@@ -182,6 +198,17 @@ export function ThroughputChart({
 
 export function LatencyChart({ series, height = 220 }: { series: Series; height?: number }) {
   const [showP95, setShowP95] = useState(true);
+  if (series.labels.length === 0) {
+    return (
+      <Card tone="plate" className="p-5">
+        <h2 className="text-[16px] font-semibold tracking-[-0.02em]">Latency envelope</h2>
+        <p className="mt-1 text-[12px] text-ink-subtle">
+          No history exported by the host — the collector reports a point-in-time snapshot only.
+        </p>
+        <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
+      </Card>
+    );
+  }
   const data = series.labels.map((label, index) => ({
     label,
     latency: Math.round(series.latency[index] ?? 0),
@@ -258,6 +285,17 @@ export function LatencyChart({ series, height = 220 }: { series: Series; height?
 }
 
 export function ErrorsChart({ series, height = 180 }: { series: Series; height?: number }) {
+  if (series.labels.length === 0) {
+    return (
+      <Card tone="plate" className="p-5">
+        <h2 className="text-[16px] font-semibold tracking-[-0.02em]">Errors & rejections</h2>
+        <p className="mt-1 text-[12px] text-ink-subtle">
+          No history exported by the host — the collector reports a point-in-time snapshot only.
+        </p>
+        <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
+      </Card>
+    );
+  }
   const data = series.labels.map((label, index) => ({
     label,
     errors: series.errors[index] ?? 0,
@@ -289,6 +327,20 @@ export function ErrorsChart({ series, height = 180 }: { series: Series; height?:
 
 export function TokenSpendChart({ series, height = 200 }: { series: Series; height?: number }) {
   const gradientId = useId();
+  if (series.labels.length === 0) {
+    return (
+      <Card tone="plate" className="p-5">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-[16px] font-semibold tracking-[-0.02em]">Token spend</h2>
+          <span className="font-mono text-[13px] text-ink">—</span>
+        </div>
+        <p className="mt-1 text-[12px] text-ink-subtle">
+          No history exported by the host — the collector reports a point-in-time snapshot only.
+        </p>
+        <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
+      </Card>
+    );
+  }
   const data = series.labels.map((label, index) => ({
     label,
     tokens: series.tokens[index] ?? 0,
