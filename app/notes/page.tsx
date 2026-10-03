@@ -95,7 +95,12 @@ function NoteReader({ path }: { path: string }) {
           Copy markdown
         </Button>
       </div>
-      <article className="prose-anim max-h-[46rem] overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: [0.32, 0.72, 0, 1] }}
+      >
+        <article className="prose-anim max-h-[46rem] overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           components={{
@@ -171,7 +176,8 @@ function NoteReader({ path }: { path: string }) {
         >
           {body}
         </ReactMarkdown>
-      </article>
+        </article>
+      </motion.div>
     </>
   );
 }
@@ -294,31 +300,35 @@ export default function NotesPage() {
                       <button
                         type="button"
                         onClick={() => setSelected(note.id)}
-                        className={cn(
-                          "w-full rounded-xl px-3 py-2.5 text-left transition-colors duration-300",
-                          current?.id === note.id
-                            ? "bg-brand/10 ring-1 ring-brand/30"
-                            : "hover:bg-surface-2/70",
-                        )}
+                        className="relative w-full rounded-xl px-3 py-2.5 text-left transition-colors duration-300 hover:bg-surface-2/70"
                       >
-                        <div className="flex items-center gap-1.5">
-                          {note.pinned ? (
-                            <PushPinIcon size={11} weight="fill" className="text-brand" />
-                          ) : null}
-                          <span className="truncate text-[13px] font-medium text-ink">
-                            {note.title}
+                        {current?.id === note.id ? (
+                          <motion.span
+                            layoutId="note-active-glow"
+                            className="absolute inset-0 rounded-xl bg-brand/10 ring-1 ring-brand/40 shadow-[0_0_32px_-8px_var(--brand)]"
+                            transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                          />
+                        ) : null}
+                        <span className="relative">
+                          <span className="flex items-center gap-1.5">
+                            {note.pinned ? (
+                              <PushPinIcon size={11} weight="fill" className="text-brand" />
+                            ) : null}
+                            <span className="truncate text-[13px] font-medium text-ink">
+                              {note.title}
+                            </span>
                           </span>
-                        </div>
-                        <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-ink-subtle">
-                          {note.excerpt}
-                        </p>
-                        <div className="mt-1.5 flex items-center gap-2 text-[10px] text-ink-subtle">
-                          <span className="inline-flex items-center gap-1">
-                            <FolderSimpleIcon size={10} />
-                            {note.folder}
+                          <p className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-ink-subtle">
+                            {note.excerpt}
+                          </p>
+                          <span className="mt-1.5 flex items-center gap-2 text-[10px] text-ink-subtle">
+                            <span className="inline-flex items-center gap-1">
+                              <FolderSimpleIcon size={10} />
+                              {note.folder}
+                            </span>
+                            <span className="font-mono">{formatRelative(note.updatedAt, data?.generatedAt)}</span>
                           </span>
-                          <span className="font-mono">{formatRelative(note.updatedAt, data?.generatedAt)}</span>
-                        </div>
+                        </span>
                       </button>
                     </motion.li>
                   ))}
@@ -332,6 +342,10 @@ export default function NotesPage() {
           title={current?.title ?? "Reader"}
           description={current?.path}
           padding="none"
+          className={cn(
+            current &&
+              "shadow-[0_0_80px_-28px_var(--brand)] ring-1 ring-brand/25",
+          )}
           actions={
             current ? (
               <div className="flex flex-wrap items-center gap-1.5">

@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/menus";
 import { AgentGlyph, STATUS_COLOR } from "@/components/dashboard/agent-glyph";
+import { OfficeFloor } from "@/components/dashboard/office-floor";
 import { cn } from "@/lib/utils";
 import type { Agent, AgentStatus } from "@/lib/types";
 
@@ -211,6 +212,8 @@ export default function AgentsPage() {
       />
 
       <LiveConstellationPanel />
+
+      <OfficeFloor />
 
       <SectionCard
         title="Peer roster"
