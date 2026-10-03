@@ -20,11 +20,11 @@ import type { Agent, AgentStatus, HeatCell, MeshSnapshot, Series } from "@/lib/t
  */
 
 const DEPARTMENTS: Record<string, string> = {
-  "office-of-the-owner": "Office of the Owner",
-  "product-and-operations": "Product & Operations",
+  "office-of-owner": "Office of the Owner",
+  "product-operations": "Product & Operations",
   engineering: "Engineering",
-  "knowledge-and-content": "Knowledge & Content",
-  "commercial-and-finance": "Commercial & Finance",
+  "knowledge-content": "Knowledge & Content",
+  "commercial-finance": "Commercial & Finance",
 };
 
 /** Reuse the accent already assigned to each profile so colours stay stable. */
