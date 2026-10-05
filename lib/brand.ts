@@ -14,6 +14,7 @@ export const NAV_GROUPS = [
     label: "Command",
     items: [
       { href: "/", label: "Overview", icon: "SquaresFour", hint: "Mesh pulse" },
+      { href: "/workspace", label: "Workspace", icon: "Users", hint: "Office view" },
       { href: "/agents", label: "Agents", icon: "Robot", hint: "26 profiles" },
       { href: "/activity", label: "Activity", icon: "Pulse", hint: "Live stream" },
     ],

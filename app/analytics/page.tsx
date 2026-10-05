@@ -76,7 +76,7 @@ export default function AnalyticsPage() {
     return (
       <div className="space-y-4">
         <div className="h-20 animate-pulse rounded-[1.5rem] bg-surface-2" />
-        <div className="grid grid-cols-1 grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div className="h-72 animate-pulse rounded-[1.75rem] bg-surface-2" />
           <div className="h-72 animate-pulse rounded-[1.75rem] bg-surface-2" />
         </div>
@@ -185,6 +185,7 @@ export default function AnalyticsPage() {
           tone="var(--brand)"
           icon={<ChartLineUpIcon size={17} weight="duotone" />}
           hint={hasSeries ? `peak ${formatNumber(Math.max(...series.throughput))} rps` : "no history exported by the host"}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="p95 latency"
@@ -199,6 +200,7 @@ export default function AnalyticsPage() {
                   totals.collectMs == null ? "" : ` · sweep ${formatMs(totals.collectMs)}`
                 }`
           }
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="Token burn"
@@ -213,6 +215,7 @@ export default function AnalyticsPage() {
                 ? "not reported by the collector"
                 : `${formatCompact(totals.tokens / Math.max(1, windowMinutes))} per minute`
           }
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="Errors"
@@ -221,17 +224,18 @@ export default function AnalyticsPage() {
           data={hasSeries ? series.errors : undefined}
           icon={<LightningIcon size={17} weight="duotone" />}
           hint={totalErrors == null ? "no history exported by the host" : totalErrors === 0 ? "clean window" : "inspect the activity log"}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
       </section>
 
-      <section className="grid grid-cols-1 grid gap-4 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ThroughputChart series={series} height={230} title="Throughput trend" />
         <LatencyChart series={series} height={230} />
         <TokenSpendChart series={series} height={210} />
         <ErrorsChart series={series} height={210} />
       </section>
 
-      <section className="grid grid-cols-1 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
         <SectionCard
           title="Peer leaderboard"
           description="Sort by the metric that matters to you right now."
@@ -267,7 +271,7 @@ export default function AnalyticsPage() {
               </THead>
               <TBody>
                 {rows.map((row, index) => (
-                  <TR key={row.id} onClick={() => router.push("/agents")}>
+                  <TR key={row.id} onClick={() => router.push("/agents")} className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                     <TD>
                       <div className="flex items-center gap-2.5">
                         <span className="font-mono text-[11px] text-ink-subtle">

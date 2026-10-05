@@ -34,7 +34,7 @@ export function DropdownMenuContent({
 }
 
 const itemClass =
-  "relative flex cursor-pointer select-none items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] text-ink-muted outline-none transition-colors duration-200 data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:size-4";
+  "relative flex cursor-pointer select-none items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] text-ink-muted outline-none transition-all duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink data-[disabled]:pointer-events-none data-[disabled]:opacity-40 [&_svg]:size-4";
 
 export function DropdownMenuItem({
   className,
@@ -67,7 +67,7 @@ export function SelectTrigger({
   return (
     <SelectPrimitive.Trigger
       className={cn(
-        "inline-flex h-9 items-center justify-between gap-2 rounded-xl border border-hairline bg-surface-2/70 px-3 text-[13px] text-ink transition-all duration-300 hover:border-hairline-strong focus:outline-none focus:ring-4 focus:ring-brand/10 data-[placeholder]:text-ink-subtle",
+        "inline-flex h-9 items-center justify-between gap-2 rounded-xl border border-hairline bg-surface-2/70 px-3 text-[13px] text-ink transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:border-hairline-strong focus:outline-none focus:ring-4 focus:ring-brand/10 data-[placeholder]:text-ink-subtle",
         className,
       )}
       {...props}
@@ -111,7 +111,7 @@ export function SelectItem({
   return (
     <SelectPrimitive.Item
       className={cn(
-        "relative flex cursor-pointer select-none items-center gap-2 rounded-xl py-2 pl-3 pr-8 text-[13px] text-ink-muted outline-none transition-colors duration-200 data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink data-[state=checked]:text-ink",
+        "relative flex cursor-pointer select-none items-center gap-2 rounded-xl py-2 pl-3 pr-8 text-[13px] text-ink-muted outline-none transition-all duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[highlighted]:bg-surface-2 data-[highlighted]:text-ink data-[state=checked]:text-ink",
         className,
       )}
       {...props}

@@ -88,6 +88,7 @@ export default function OverviewPage() {
           icon={<ShieldCheckIcon size={17} weight="duotone" />}
           hint={unhealthy > 0 ? `${unhealthy} need attention` : "all peers healthy"}
           onClick={() => router.push("/agents")}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="Throughput"
@@ -100,6 +101,7 @@ export default function OverviewPage() {
           icon={<ChartLineUpIcon size={17} weight="duotone" />}
           hint={hasSeries ? `p95 ${formatMs(totals.p95Latency)}` : "no history exported by the host"}
           onClick={() => router.push("/analytics")}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="Open tasks"
@@ -110,6 +112,7 @@ export default function OverviewPage() {
             totals.busy == null ? "queue depth not reported by the collector" : `${totals.busy} agents busy`
           }
           onClick={() => router.push("/kanban")}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
         <StatCard
           label="Token spend"
@@ -122,6 +125,7 @@ export default function OverviewPage() {
               : `${formatPercent(totals.successRate)} success rate`
           }
           onClick={() => router.push("/analytics")}
+          className="ring-1 ring-inset ring-hairline hover:ring-brand/30"
         />
       </section>
 
@@ -154,7 +158,7 @@ export default function OverviewPage() {
 
       <LoadHeatmap cells={data.heat} agents={agents.map((agent) => agent.id)} />
 
-      <section className="grid grid-cols-1 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <LiveFeed limit={9} />
         <Card tone="plate" className="flex flex-col p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -165,13 +169,13 @@ export default function OverviewPage() {
             <Badge tone="neutral">⌘K</Badge>
           </div>
 
-          <div className="grid grid-cols-1 grid gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {agents.slice(0, 4).map((agent) => (
               <button
                 key={agent.id}
                 type="button"
                 onClick={() => setFocusAgent(agent.id)}
-                className="group flex items-center justify-between gap-3 rounded-2xl border border-hairline bg-surface-2/50 px-3.5 py-3 text-left transition-all duration-500 hover:-translate-y-0.5 hover:border-hairline-strong hover:bg-surface-2"
+                className="group flex items-center justify-between gap-3 rounded-2xl border border-hairline bg-surface-2/50 px-3.5 py-3 text-left transition-all duration-500 hover:-translate-y-0.5 hover:border-hairline-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-medium">{agent.id}</span>
@@ -213,7 +217,7 @@ export default function OverviewPage() {
         </Card>
       </section>
 
-      <section className="grid grid-cols-1 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {agents.map((agent, index) => (
           <motion.button
             key={agent.id}
@@ -222,7 +226,7 @@ export default function OverviewPage() {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: index * 0.04, ease: [0.32, 0.72, 0, 1] }}
-            className="plate group flex items-center gap-3 rounded-[1.5rem] p-3.5 text-left transition-all duration-700 hover:-translate-y-0.5 hover:shadow-lift"
+            className="plate group flex items-center gap-3 rounded-[1.5rem] p-3.5 text-left transition-all duration-700 hover:-translate-y-0.5 hover:shadow-lift focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             <span
               className="size-9 shrink-0 rounded-xl"

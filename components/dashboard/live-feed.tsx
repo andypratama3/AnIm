@@ -61,7 +61,7 @@ export function EventRow({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 10 }}
       transition={{ duration: 0.45, ease: [0.32, 0.72, 0, 1] }}
-      className="group relative flex gap-3 rounded-2xl px-3 py-2.5 transition-colors duration-300 hover:bg-surface-2/70"
+      className="group relative flex gap-3 rounded-2xl px-3 py-2.5 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-surface-2/70 hover:-translate-y-px"
     >
       <span
         className="mt-1.5 size-1.5 shrink-0 rounded-full"
@@ -104,7 +104,7 @@ export function EventRow({
         <button
           type="button"
           onClick={() => onPickAgent(event.agent)}
-          className="absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-ink-subtle opacity-0 transition-opacity duration-300 hover:bg-surface-3 hover:text-ink group-hover:opacity-100"
+          className="absolute right-2 top-2 rounded-lg px-2 py-1 text-[10px] uppercase tracking-[0.14em] text-ink-subtle opacity-0 transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-surface-3 hover:text-ink group-hover:opacity-100"
         >
           inspect
         </button>

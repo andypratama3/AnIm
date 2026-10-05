@@ -326,7 +326,7 @@ export default function AgentsPage() {
         )}
       </SectionCard>
 
-      <section className="grid grid-cols-1 grid gap-4 lg:grid-cols-2">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SectionCard title="Health distribution" description="Composite score per peer.">
           <div className="flex flex-wrap items-center justify-around gap-4">
             {agents.map((agent) => (
@@ -334,7 +334,7 @@ export default function AgentsPage() {
                 key={agent.id}
                 type="button"
                 onClick={() => setFocusAgent(agent.id)}
-                className="flex flex-col items-center gap-2 transition-transform duration-500 hover:scale-105"
+                className="flex flex-col items-center gap-2 rounded-2xl p-2 transition-all duration-500 hover:scale-105 hover:bg-surface-2/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               >
                 <RadialGauge
                   value={agent.health}

@@ -48,6 +48,7 @@ import { cn } from "@/lib/utils";
 
 const PAGE_META: Record<string, { title: string; sub: string }> = {
   "/": { title: "Overview", sub: "Mesh pulse" },
+  "/workspace": { title: "Workspace", sub: "Office view" },
   "/agents": { title: "Agents", sub: "Profile topology" },
   "/activity": { title: "Activity", sub: "Recorded events" },
   "/kanban": { title: "Kanban", sub: "Task flow" },
