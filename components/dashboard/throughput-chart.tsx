@@ -203,7 +203,7 @@ export function LatencyChart({ series, height = 220 }: { series: Series; height?
       <Card tone="plate" className="p-5">
         <h2 className="text-[16px] font-semibold tracking-[-0.02em]">Latency envelope</h2>
         <p className="mt-1 text-[12px] text-ink-subtle">
-          No history exported by the host — the collector reports a point-in-time snapshot only.
+          No agent reports a token counter, so spend is unmeasured — not zero.
         </p>
         <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
       </Card>
@@ -212,7 +212,11 @@ export function LatencyChart({ series, height = 220 }: { series: Series; height?
   const data = series.labels.map((label, index) => ({
     label,
     latency: Math.round(series.latency[index] ?? 0),
-    p95: showP95 ? Math.round((series.latency[index] ?? 0) * 1.6) : null,
+    p95: showP95
+      ? series.p95 && series.p95[index] != null
+        ? Math.round(series.p95[index] as number)
+        : Math.round((series.latency[index] ?? 0) * 1.6)
+      : null,
   }));
 
   return (
@@ -290,7 +294,7 @@ export function ErrorsChart({ series, height = 180 }: { series: Series; height?:
       <Card tone="plate" className="p-5">
         <h2 className="text-[16px] font-semibold tracking-[-0.02em]">Errors & rejections</h2>
         <p className="mt-1 text-[12px] text-ink-subtle">
-          No history exported by the host — the collector reports a point-in-time snapshot only.
+          No agent reports a token counter, so spend is unmeasured — not zero.
         </p>
         <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
       </Card>
@@ -335,7 +339,7 @@ export function TokenSpendChart({ series, height = 200 }: { series: Series; heig
           <span className="font-mono text-[13px] text-ink">—</span>
         </div>
         <p className="mt-1 text-[12px] text-ink-subtle">
-          No history exported by the host — the collector reports a point-in-time snapshot only.
+          No agent reports a token counter, so spend is unmeasured — not zero.
         </p>
         <p className="py-10 text-center font-mono text-[12px] text-ink-subtle">—</p>
       </Card>

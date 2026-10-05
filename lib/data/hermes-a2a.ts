@@ -15,33 +15,18 @@ export type A2AEntry = {
   peer: string;
   taskId: string;
   summary: string;
+  /**
+   * Whether the exchange itself failed. Decided by the same pattern that
+   * counts `errors`, so a row and the error tally can never disagree.
+   */
+  failed: boolean;
 };
 
 export type A2AState =
-  | { mode: "live"; entries: A2AEntry[]; total: number; latencyMs: number }
+  | { mode: "live"; entries: A2AEntry[]; total: number; errors: number; latencyMs: number }
   | { mode: "unavailable"; reason: string; latencyMs: number };
 
-const SCRIPT = [
-  "import json",
-  `path=${JSON.stringify(AUDIT_LOG)}`,
-  `limit=${MAX_ROWS}`,
-  "rows=[]",
-  "try:",
-  "    fh=open(path, encoding='utf-8', errors='replace')",
-  "except OSError:",
-  "    print(json.dumps({'rows':[],'total':0}))",
-  "    raise SystemExit",
-  "total=0",
-  "for line in fh:",
-  "    line=line.strip()",
-  "    if not line: continue",
-  "    total+=1",
-  "    try: d=json.loads(line)",
-  "    except Exception: continue",
-  "    rows.append(d)",
-  "rows=rows[-limit:]",
-  "print(json.dumps({'rows':rows,'total':total}))",
-].join("\n");
+const SCRIPT = ["import json","import re",`path=${JSON.stringify(AUDIT_LOG)}`,`limit=${MAX_ROWS}`,"rows=[]","fail=re.compile(r'server error|delivery failed|fetch failed|connect timeout|rate limit|exceeded|unavailable|non-addressable|transport error|bad gateway|gateway error', re.I)","errors_total=0","try:","    fh=open(path, encoding='utf-8', errors='replace')","except OSError:","    print(json.dumps({'rows':[],'total':0,'errors':0}))","    raise SystemExit","total=0","for line in fh:","    line=line.strip()","    if not line: continue","    total+=1","    try: d=json.loads(line)","    except Exception: continue","    summary = d.get('summary','') if isinstance(d, dict) else ''","    if (isinstance(summary,str) and fail.search(summary)): errors_total+=1","    rows.append(dict(d, failed=True) if (isinstance(summary,str) and fail.search(summary)) else d)","rows=rows[-limit:]","print(json.dumps({'rows':rows,'total':total,'errors':errors_total}))"].join("\n");
 
 /**
  * Read-only tail of the Hermes A2A audit log on this host.
@@ -59,7 +44,7 @@ export async function readA2AAudit(): Promise<A2AState> {
       maxBuffer: MAX_BYTES,
       encoding: "utf8",
     });
-    const parsed = JSON.parse(stdout.trim()) as { rows: unknown[]; total: number };
+    const parsed = JSON.parse(stdout.trim()) as { rows: unknown[]; total: number; errors?: number };
     const entries: A2AEntry[] = [];
     for (const row of parsed.rows ?? []) {
       if (typeof row !== "object" || row === null) continue;
@@ -73,9 +58,10 @@ export async function readA2AAudit(): Promise<A2AState> {
         peer: r.peer,
         taskId: r.task_id,
         summary: typeof r.summary === "string" ? r.summary.slice(0, 280) : "",
+        failed: r.failed === true,
       });
     }
-    return { mode: "live", entries, total: parsed.total ?? entries.length, latencyMs: Date.now() - started };
+    return { mode: "live", entries, total: parsed.total ?? entries.length, errors: parsed.errors ?? 0, latencyMs: Date.now() - started };
   } catch (err) {
     return {
       mode: "unavailable",

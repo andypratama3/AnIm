@@ -133,8 +133,8 @@ export default function AnalyticsPage() {
         title="Analytics"
         description={
           hasSeries
-            ? `Rolling ${formatWindow(windowMinutes)}-minute window, ${series.resolutionSec}s buckets across all ${agents.length} peers.${synthetic ? " Series is generated locally - the mesh host keeps no history." : ""}`
-            : "No history exported by the host — the collector reports a point-in-time snapshot only, so charts and windowed stats stay empty."
+            ? `Rolling ${formatWindow(windowMinutes)}-minute window, ${series.resolutionSec}s buckets across all ${agents.length} peers, recorded by this console while it is open.${synthetic ? " Series is generated locally." : ""}`
+            : "No history exported by the host — the collector reports a point-in-time snapshot only, Collecting the first samples — charts fill in as the console polls."
         }
         meta={
           <>
@@ -192,7 +192,13 @@ export default function AnalyticsPage() {
           tone="var(--brand-2)"
           data={hasSeries ? series.latency : undefined}
           icon={<ClockIcon size={17} weight="duotone" />}
-          hint={peakLatency == null ? "no history exported by the host" : `peak ${Math.round(peakLatency)} ms in window`}
+          hint={
+            peakLatency == null
+              ? "no history exported by the host"
+              : `peak ${Math.round(peakLatency)} ms in window${
+                  totals.collectMs == null ? "" : ` · sweep ${formatMs(totals.collectMs)}`
+                }`
+          }
         />
         <StatCard
           label="Token burn"

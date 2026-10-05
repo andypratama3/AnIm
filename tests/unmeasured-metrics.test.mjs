@@ -170,27 +170,39 @@ describe("the sidebar badge counts something that was measured", () => {
  * state. These assertions pin that, because the failure mode is silent: the
  * console still looks populated, just wrong.
  */
-const [liveMeshRaw, sparklineRaw, engineRaw] = await Promise.all([
+const [liveMeshRaw, sparklineRaw, engineRaw, historyStoreRaw] = await Promise.all([
   read("lib/data/live-mesh.ts"),
   read("components/dashboard/sparkline.tsx"),
   read("lib/data/engine.ts"),
+  read("lib/data/history-store.ts"),
 ]);
 
 const liveMesh = stripComments(liveMeshRaw);
 const sparkline = stripComments(sparklineRaw);
 const engine = stripComments(engineRaw);
+const historyStore = stripComments(historyStoreRaw);
 
 describe("the live path fabricates no series, heat or score", () => {
-  test("live mode builds an empty series, never a generated one", () => {
+  test("live mode builds its series from recorded samples, never a generated one", () => {
     // `createSnapshot` remains imported for the *simulated* fallback, so the
     // check is that the live snapshot does not call it.
-    assert.match(liveMesh, /function noSeries\(\)/, "the empty-series builder is gone");
     const liveBlock = liveMesh.slice(liveMesh.indexOf("const snapshot: MeshSnapshot"));
-    assert.match(liveBlock, /series: noSeries\(\)/, "live must use noSeries()");
+    assert.match(
+      liveBlock,
+      /throughput: series\.throughput/,
+      "the live series must come from the recorded-sample builder",
+    );
     assert.doesNotMatch(
       liveBlock,
       /syntheticSeries|createSnapshot\(/,
       "live mode must not generate series",
+    );
+    // The series is only as honest as the store behind it: with nothing
+    // recorded, the builder has to hand back empty buckets, not zeros.
+    assert.match(
+      historyStore,
+      /if \(!recent\.length\) \{[\s\S]*?throughput: \[\]/,
+      "an empty history must yield an empty series, not a zeroed one",
     );
   });
 

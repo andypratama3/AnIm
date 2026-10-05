@@ -72,38 +72,57 @@ export function useMoveTask() {
   const board = useBoard();
   const [isMutating, setPending] = useState(false);
   const move = useCallback(
-    async (id: string, status: TaskStatus) => {
+    async (
+      id: string,
+      status: TaskStatus,
+    ): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> => {
       setPending(true);
       try {
-      await board.mutate(
-        async (current) => {
-          const response = await fetch("/api/board", {
-            method: "PATCH",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id, status }),
-          });
-          if (!response.ok) throw new Error("Move rejected");
-          const payload = (await response.json()) as { task: Task };
-          if (!current) return { tasks: [payload.task], generatedAt: Date.now() };
-          return {
-            ...current,
-            tasks: current.tasks.map((t) => (t.id === id ? payload.task : t)),
-          };
-        },
-        {
-          optimisticData: (current) =>
-            current
-              ? {
-                  ...current,
-                  tasks: current.tasks.map((task) =>
-                    task.id === id ? { ...task, status, updatedAt: Date.now() } : task,
-                  ),
-                }
-              : { tasks: [], generatedAt: Date.now() },
-          rollbackOnError: true,
-          revalidate: false,
-        },
-      );
+        await board.mutate(
+          async (current) => {
+            const response = await fetch("/api/board", {
+              method: "PATCH",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ id, status }),
+            });
+            const payload = (await response.json().catch(() => null)) as {
+              task?: Task;
+              error?: string;
+              detail?: string;
+            } | null;
+            if (!response.ok) {
+              throw Object.assign(
+                new Error(payload?.error ?? `Move rejected (${response.status})`),
+                { detail: payload?.detail, status: response.status },
+              );
+            }
+            if (!current || !payload?.task) return current;
+            return {
+              ...current,
+              tasks: current.tasks.map((t) => (t.id === id ? payload.task as Task : t)),
+            };
+          },
+          {
+            optimisticData: (current) =>
+              current
+                ? {
+                    ...current,
+                    tasks: current.tasks.map((task) =>
+                      task.id === id ? { ...task, status, updatedAt: Date.now() } : task,
+                    ),
+                  }
+                : { tasks: [], generatedAt: Date.now() },
+            rollbackOnError: true,
+            revalidate: false,
+          },
+        );
+        return { ok: true };
+      } catch (error) {
+        // The board is Hermes' own: it advances work itself and refuses most
+        // console-initiated status writes. Report the refusal to the caller
+        // instead of leaving a rejected promise on the floor.
+        const failure = error as Error & { detail?: string };
+        return { ok: false, reason: failure.message ?? "move rejected", detail: failure.detail };
       } finally {
         setPending(false);
       }
@@ -124,7 +143,7 @@ export function useCreateTask() {
     status: TaskStatus;
     tags: string[];
     estimate: number;
-  }) => {
+  }): Promise<{ ok: true } | { ok: false; reason: string }> => {
     setPending(true);
     try {
       const response = await fetch("/api/board", {
@@ -134,10 +153,12 @@ export function useCreateTask() {
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Could not create task");
+        return { ok: false, reason: payload?.error ?? "Could not create task" };
       }
       await board.mutate();
-      return true;
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: (error as Error).message ?? "Could not reach the board" };
     } finally {
       setPending(false);
     }
@@ -148,12 +169,27 @@ export function useCreateTask() {
 export function useDeleteTask() {
   const board = useBoard();
   const [isMutating, setPending] = useState(false);
-  const remove = async (id: string) => {
+  const remove = async (
+    id: string,
+  ): Promise<{ ok: true } | { ok: false; reason: string; detail?: string }> => {
     setPending(true);
     try {
       const response = await fetch(`/api/board?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-      if (!response.ok) throw new Error("Delete rejected");
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+          detail?: string;
+        } | null;
+        return {
+          ok: false,
+          reason: payload?.error ?? `Delete rejected (${response.status})`,
+          detail: payload?.detail,
+        };
+      }
       await board.mutate();
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, reason: (error as Error).message ?? "Could not reach the board" };
     } finally {
       setPending(false);
     }

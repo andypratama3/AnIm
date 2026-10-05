@@ -188,6 +188,7 @@ export function createSnapshot(
           ? Math.round(latencies.reduce((sum, v) => sum + v, 0) / latencies.length)
           : null,
       p95Latency: latencies[Math.floor(latencies.length * 0.95)] ?? null,
+      collectMs: null,
       successRate: Number(clamp(100 - errorRate * 3.1, 82, 99.9).toFixed(2)),
       meshLinks: PROFILES.length * (PROFILES.length - 1) / 2,
     },

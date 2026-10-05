@@ -24,6 +24,7 @@ export type RemoteAgent = {
     skillCount?: number;
     skills?: string[];
   };
+  probeMs?: number | null;
   lifecycle: string;
   skills: string[];
   docs: Record<string, number>;

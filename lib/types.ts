@@ -67,6 +67,12 @@ export type MeshTotals = {
   tokens: number | null;
   avgLatency: number | null;
   p95Latency: number | null;
+  /**
+   * How long a full collector sweep takes over every profile. Measured, but it
+   * is this console's own sampling cost and not an agent's latency, so it is
+   * kept out of `avgLatency`/`p95Latency` and reported on its own.
+   */
+  collectMs: number | null;
   successRate: number | null;
   meshLinks: number;
 };
@@ -101,6 +107,10 @@ export type Series = {
    */
   resolutionSec: number;
   synthetic: boolean;
+  /** per-bucket p95 of measured probe latencies, when the console has collected enough samples */
+  p95?: Array<number | null>;
+  /** false when no agent reports token counters — the token chart must say so, not draw zeros */
+  tokensMeasured?: boolean;
 };
 
 export type HeatCell = {

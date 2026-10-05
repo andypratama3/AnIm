@@ -21,6 +21,8 @@
   --ink-subtle: oklch(0.66 0.012 265);
   --brand: oklch(0.55 0.22 288);
   --brand-soft: oklch(0.55 0.22 288 / 0.12);
+  /* Readable text on a solid --brand fill (the messenger's outgoing bubble). */
+  --on-brand: oklch(0.99 0 0);
   --brand-2: oklch(0.66 0.16 210);
   --brand-3: oklch(0.62 0.24 340);
   --ok: oklch(0.62 0.15 160);
@@ -45,6 +47,7 @@
   --ink-subtle: oklch(0.58 0.016 275);
   --brand: oklch(0.72 0.17 288);
   --brand-soft: oklch(0.72 0.17 288 / 0.16);
+  --on-brand: oklch(0.16 0.02 288);
   --brand-2: oklch(0.78 0.13 205);
   --brand-3: oklch(0.74 0.18 340);
   --ok: oklch(0.76 0.16 160);
@@ -69,6 +72,7 @@
   --color-ink-subtle: var(--ink-subtle);
   --color-brand: var(--brand);
   --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
   --color-brand-2: var(--brand-2);
   --color-brand-3: var(--brand-3);
   --color-ok: var(--ok);

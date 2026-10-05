@@ -5,6 +5,7 @@ import {
   clearTranscript,
   newMessage,
   readTranscript,
+  type ReplyRef,
 } from "@/lib/data/chat-store";
 import {
   acquireSlot,
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { profile?: unknown; prompt?: unknown };
+  let body: { profile?: unknown; prompt?: unknown; replyTo?: unknown };
   try {
     body = (await request.json()) as typeof body;
   } catch {
@@ -118,6 +119,10 @@ export async function POST(request: Request) {
   if (typeof prompt !== "string") {
     return Response.json({ error: "prompt must be a string" }, { status: 400, headers: guardHeaders() });
   }
+  // A reply reference is display-only. An unrecognisable one is discarded by
+  // `newMessage` rather than rejected: the operator still gets their turn sent,
+  // it simply will not carry a quote.
+  const replyTo = body.replyTo as ReplyRef | undefined;
 
   // One request is one remote process, and each can hold for minutes. Cap the
   // number in flight so a burst cannot pile up processes on the mesh host.
@@ -136,7 +141,7 @@ export async function POST(request: Request) {
   // Read before recording the question, so the history holds strictly prior
   // turns and the question is not counted twice.
   const prior = await readTranscript(profile);
-  const outgoing = newMessage("you", profile, prompt.trim());
+  const outgoing = newMessage("you", profile, prompt.trim(), { replyTo });
   try {
     await appendMessage(profile, outgoing);
   } catch (err) {

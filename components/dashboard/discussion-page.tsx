@@ -1,13 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useConsole } from "@/components/providers/console-provider";
 import {
   PaperPlaneTiltIcon,
   SealCheckIcon,
   ShieldWarningIcon,
   ArrowsClockwiseIcon,
-  UserCircleIcon,
-  CpuIcon,
+  ArrowBendDownLeftIcon,
+  CopyIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 import { Button } from "@/components/ui/button";
 import { Badge, Dot } from "@/components/ui/badge";
@@ -22,6 +24,7 @@ import {
 import { SectionCard, PageHeader } from "@/components/dashboard/page-header";
 import { toast } from "sonner";
 import { writeJson } from "@/lib/api/write";
+import { cn } from "@/lib/utils";
 import { createTranscriptLoader, transcriptOutcome } from "@/lib/data/transcript-load";
 
 /** Mirrors the acceptance ladder in agents/registry.json. */
@@ -35,7 +38,27 @@ type Message = {
   ts: number;
   elapsedMs?: number;
   failed?: boolean;
+  replyTo?: { id: string; from: "you" | "agent"; profile: string; snippet: string };
 };
+
+/**
+ * Whether a poll changed anything. The transcript endpoint hands back a new
+ * array on every request, so identity comparison alone would treat every poll
+ * as new content.
+ */
+function sameMessages(a: Message[], b: Message[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((m, i) => {
+    const o = b[i];
+    return (
+      m.id === o.id &&
+      m.text === o.text &&
+      m.from === o.from &&
+      m.failed === o.failed &&
+      m.elapsedMs === o.elapsedMs
+    );
+  });
+}
 
 type WorkItem = {
   id: string;
@@ -77,39 +100,164 @@ type A2AEntry = {
   peer: string;
   taskId: string;
   summary: string;
+  failed: boolean;
 };
 
+/**
+ * Bubble geometry.
+ *
+ * `rounded-2xl` is not 16px in this project: `globals.css` redefines the
+ * radius scale (`--radius-2xl: 2.25rem`), so it resolves to 36px and turned
+ * every short message into a stadium. The radius is written as one four-value
+ * shorthand rather than a base class plus a corner class, because two
+ * `rounded-*` utilities conflict and which one wins comes from stylesheet
+ * order rather than the order they appear in the attribute.
+ */
+const RADIUS_MINE = "rounded-[18px_18px_6px_18px]";
+const RADIUS_THEIRS = "rounded-[18px_18px_18px_6px]";
+
+/**
+ * A stable colour per agent, so the thread can be read by shape rather than by
+ * reading every name. Derived from the profile id, so the same agent keeps its
+ * colour across reloads and across conversations.
+ */
+const AGENT_TINTS = [
+  "bg-brand/15 text-brand",
+  "bg-brand-2/15 text-brand-2",
+  "bg-brand-3/15 text-brand-3",
+  "bg-ok/15 text-ok",
+  "bg-warn/15 text-warn",
+  "bg-danger/15 text-danger",
+];
+
+/**
+ * A bubble-level action. `type="button"` matters: these sit inside the
+ * composer form's sibling markup but a stray submit would resend the prompt.
+ */
+function BubbleAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="grid size-6 place-items-center rounded-full border border-hairline bg-surface-1 text-ink-subtle transition-colors hover:text-ink focus-visible:text-ink"
+    >
+      {children}
+    </button>
+  );
+}
+
+function tintFor(profile: string): string {
+  let hash = 0;
+  for (let i = 0; i < profile.length; i += 1) {
+    hash = (hash * 31 + profile.charCodeAt(i)) >>> 0;
+  }
+  return AGENT_TINTS[hash % AGENT_TINTS.length];
+}
+
+/** Midnight-relative day label, the way a messenger dates a break in a thread. */
+function dayLabel(ts: number): string {
+  const then = new Date(ts);
+  const today = new Date();
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startOf(today) - startOf(then)) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return then.toLocaleDateString("en-GB", { weekday: "long" });
+  return then.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function sameDay(a: number, b: number): boolean {
+  const x = new Date(a);
+  const y = new Date(b);
+  return (
+    x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate()
+  );
+}
+
+/**
+ * Agent identity in the thread. A generic chip made every reply look like it
+ * came from the same machine, so the profile's own initial is used instead.
+ */
+function AgentAvatar({ profile }: { profile: string }) {
+  return (
+    <span
+      className={`grid size-7 place-items-center rounded-full font-mono text-[11px] font-semibold ${tintFor(profile)}`}
+    >
+      {profile.slice(0, 2)}
+    </span>
+  );
+}
+
+/** Shown while a turn is in flight, so a slow agent is not mistaken for a dead one. */
+function TypingBubble({ profile }: { profile: string }) {
+  return (
+    <div className="flex gap-2 pt-2">
+      <span className="grid size-7 shrink-0 place-items-center" aria-hidden="true">
+        <AgentAvatar profile={profile} />
+      </span>
+      <div className={`flex items-center gap-1.5 bg-surface-3 px-3 py-2.5 ${RADIUS_THEIRS}`}>
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="size-1.5 animate-bounce rounded-full bg-ink-subtle"
+            style={{ animationDelay: `${i * 120}ms` }}
+          />
+        ))}
+        <span className="sr-only">{profile} is replying</span>
+      </div>
+    </div>
+  );
+}
+
 function A2ATraffic() {
+  const { live, interval } = useConsole();
   const [entries, setEntries] = useState<A2AEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [reason, setReason] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const response = await fetch("/api/a2a?limit=30", { cache: "no-store" });
-        const body = (await response.json()) as {
-          entries?: A2AEntry[];
-          total?: number;
-          reason?: string;
-        };
-        if (cancelled) return;
-        if (Array.isArray(body.entries)) {
-          setEntries(body.entries);
-          setTotal(body.total ?? body.entries.length);
-          setReason(null);
-        } else {
-          setReason(body.reason ?? "unavailable");
-        }
-      } catch {
-        if (!cancelled) setReason("unreachable");
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/a2a?limit=30", { cache: "no-store" });
+      const body = (await response.json()) as {
+        entries?: A2AEntry[];
+        total?: number;
+        reason?: string;
+      };
+      if (Array.isArray(body.entries)) {
+        setEntries(body.entries);
+        setTotal(body.total ?? body.entries.length);
+        setReason(null);
+      } else {
+        setReason(body.reason ?? "unavailable");
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      setReason("unreachable");
+    }
   }, []);
+
+  useEffect(() => {
+    // Deferred so the effect body performs no synchronous setState.
+    const kick = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(kick);
+  }, [load]);
+
+  useEffect(() => {
+    // Agents talk to each other while nobody is watching, so this list is
+    // refreshed on the console's own cadence instead of only on mount.
+    if (!live) return;
+    const id = window.setInterval(() => void load(), Math.max(interval, 4000));
+    return () => window.clearInterval(id);
+  }, [live, interval, load]);
 
   if (reason) {
     return (
@@ -136,12 +284,22 @@ function A2ATraffic() {
         {entries.map((entry) => (
           <li
             key={`${entry.taskId}-${entry.ts}`}
-            className="flex items-start gap-2.5 rounded-xl border border-hairline bg-surface-2/50 px-3 py-2"
+            className={cn(
+              "flex items-start gap-2.5 rounded-xl border px-3 py-2",
+              entry.failed
+                ? "border-danger/30 bg-danger/5"
+                : "border-hairline bg-surface-2/50",
+            )}
           >
             <span
-              className={`mt-1 size-1.5 shrink-0 rounded-full ${
-                entry.direction === "inbound" ? "bg-brand" : "bg-ok"
-              }`}
+              className={cn(
+                "mt-1 size-1.5 shrink-0 rounded-full",
+                entry.failed
+                  ? "bg-danger"
+                  : entry.direction === "inbound"
+                    ? "bg-brand"
+                    : "bg-ok",
+              )}
             />
             <div className="min-w-0 flex-1">
               <p className="flex flex-wrap items-center gap-x-2 text-[12px]">
@@ -150,6 +308,11 @@ function A2ATraffic() {
                 <span className="font-mono text-[10.5px] text-ink-subtle">
                   {new Date(entry.ts).toLocaleString("en-GB")}
                 </span>
+                {entry.failed ? (
+                  <Badge tone="danger" size="sm">
+                    failed
+                  </Badge>
+                ) : null}
               </p>
               <p className="mt-0.5 break-words text-[12px] text-ink-muted">
                 {entry.summary || entry.taskId}
@@ -164,11 +327,14 @@ function A2ATraffic() {
 
 
 function DiscussionConsole() {
+  const { live, interval } = useConsole();
   const [profiles, setProfiles] = useState<string[]>([]);
   const [target, setTarget] = useState("default");
   const [profileQuery, setProfileQuery] = useState("");
   const [prompt, setPrompt] = useState("");
   const [sending, setSending] = useState(false);
+  /** The message the next turn will quote, cleared once the turn is sent. */
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [dropped, setDropped] = useState(0);
   const [loadingLog, setLoadingLog] = useState(false);
@@ -176,6 +342,10 @@ function DiscussionConsole() {
   const [work, setWork] = useState<WorkItem[]>([]);
   const [queueBusy, setQueueBusy] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
+  /** Whether the thread is scrolled to the tail; drives follow-on-new-message. */
+  const atBottomRef = useRef(true);
+  /** Set when the operator sends, so their own message always comes into view. */
+  const forceScrollRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,9 +380,9 @@ function DiscussionConsole() {
   const [loader] = useState(createTranscriptLoader);
 
   const loadTranscript = useCallback(
-    async (profile: string) => {
+    async (profile: string, opts?: { silent?: boolean }) => {
       const controller = loader.start();
-      setLoadingLog(true);
+      if (!opts?.silent) setLoadingLog(true);
       try {
         const response = await fetch(
           `/api/agent-chat?profile=${encodeURIComponent(profile)}`,
@@ -226,17 +396,21 @@ function DiscussionConsole() {
         });
         if (outcome.kind === "ignore") return;
         if (outcome.kind === "clear") {
-          setMessages([]);
-          setDropped(0);
+          setMessages((current) => (current.length === 0 ? current : []));
+          setDropped((current) => (current === 0 ? current : 0));
           return;
         }
-        setMessages(outcome.messages as Message[]);
-        setDropped(outcome.dropped);
+        // Polling returns a fresh array every time even when nothing changed.
+        // Replacing state unconditionally re-fires the scroll effect below and
+        // drags the view to the bottom mid-read, several times a minute.
+        const next = outcome.messages as Message[];
+        setMessages((current) => (sameMessages(current, next) ? current : next));
+        setDropped((current) => (current === outcome.dropped ? current : outcome.dropped));
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") return;
         if (!loader.isCurrent(controller)) return;
-        setMessages([]);
-        setDropped(0);
+        setMessages((current) => (current.length === 0 ? current : []));
+        setDropped((current) => (current === 0 ? current : 0));
       } finally {
         if (loader.isCurrent(controller)) setLoadingLog(false);
       }
@@ -253,6 +427,12 @@ function DiscussionConsole() {
       loader.cancel();
     };
   }, [loadTranscript, target, loader]);
+
+  useEffect(() => {
+    if (!live) return;
+    const id = window.setInterval(() => void loadTranscript(target, { silent: true }), Math.max(interval, 3000));
+    return () => window.clearInterval(id);
+  }, [live, interval, target, loadTranscript]);
 
   const clearLog = useCallback(async () => {
     const profile = target;
@@ -271,7 +451,15 @@ function DiscussionConsole() {
   }, [target]);
 
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+    const el = logRef.current;
+    if (!el) return;
+    // Only follow the tail if the reader is already there. An agent that
+    // messages every few seconds would otherwise yank the view down while
+    // someone is reading back through history.
+    if (atBottomRef.current || forceScrollRef.current) {
+      forceScrollRef.current = false;
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
   }, [messages]);
 
   const filteredProfiles = useMemo(() => {
@@ -291,12 +479,26 @@ function DiscussionConsole() {
       profile: target,
       text,
       ts: Date.now(),
+      // Captured before the state is cleared, so the quote and the turn it
+      // belongs to cannot drift apart.
+      ...(replyTo
+        ? {
+            replyTo: {
+              id: replyTo.id,
+              from: replyTo.from,
+              profile: replyTo.profile,
+              snippet: replyTo.text.slice(0, 240),
+            },
+          }
+        : {}),
     };
     // Shown immediately; replaced by the stored transcript once the server has
     // actually written it, so the log never disagrees with the file.
     setMessages((current) => [...current, userMessage]);
     setPrompt("");
+    setReplyTo(null);
     setSending(true);
+    forceScrollRef.current = true;
 
     /** Failures the server never stored are shown locally and flagged. */
     const appendLocalFailure = (label: string) =>
@@ -314,7 +516,11 @@ function DiscussionConsole() {
 
     try {
       const response = await writeJson("/api/agent-chat", {
-        json: { profile: target, prompt: text },
+        json: {
+          profile: target,
+          prompt: text,
+          ...(userMessage.replyTo ? { replyTo: userMessage.replyTo } : {}),
+        },
       });
 
       const body = (await response.json().catch(() => ({}))) as {
@@ -364,7 +570,7 @@ function DiscussionConsole() {
     } finally {
       setSending(false);
     }
-  }, [prompt, sending, target]);
+  }, [prompt, sending, target, replyTo]);
 
   const visibleMessages = useMemo(() => {
     const q = logQuery.trim().toLowerCase();
@@ -520,19 +726,69 @@ function DiscussionConsole() {
               <span className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-ink-subtle">
                 Message
               </span>
-              <Textarea
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-                    event.preventDefault();
-                    void send();
-                  }
-                }}
-                placeholder={`Ask ${target} to report status, restate its task, or hand work to a peer…`}
-                rows={4}
-                className="w-full resize-none"
-              />
+              {/* The quote being answered is part of the input, so it is
+                  dismissed by Escape or the close button rather than being
+                  remembered behind the send. */}
+              {replyTo ? (
+                <div className="mb-2 flex items-start gap-2 rounded-2xl border border-brand/25 bg-brand/6 px-3 py-2">
+                  <ArrowBendDownLeftIcon
+                    size={13}
+                    className="mt-0.5 shrink-0 text-brand"
+                    aria-hidden="true"
+                  />
+                  <p className="min-w-0 flex-1 text-[11.5px] leading-snug text-ink-muted">
+                    <span className="font-semibold text-ink">
+                      Replying to {replyTo.from === "you" ? "yourself" : replyTo.profile}
+                    </span>
+                    <br />
+                    <span className="line-clamp-2 break-words">{replyTo.text}</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setReplyTo(null)}
+                    aria-label="Cancel reply"
+                    className="grid size-5 shrink-0 place-items-center rounded-full text-ink-subtle transition-colors hover:text-ink focus-visible:text-ink"
+                  >
+                    <XIcon size={12} />
+                  </button>
+                </div>
+              ) : null}
+              <div className="flex items-end gap-2">
+                <Textarea
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault();
+                      void send();
+                      return;
+                    }
+                    if (event.key === "Escape" && replyTo) {
+                      event.preventDefault();
+                      setReplyTo(null);
+                    }
+                  }}
+                  placeholder={`Ask ${target} to report status, restate its task, or hand work to a peer…`}
+                  rows={1}
+                  aria-label="Message to send"
+                  className="min-h-10 w-full flex-1 resize-none rounded-full px-4"
+                />
+                <Button
+                  variant="primary"
+                  size="icon"
+                  onClick={() => void send()}
+                  disabled={sending || !prompt.trim()}
+                  className="shrink-0 rounded-full"
+                  title={sending ? "waiting for agent…" : "Send (⌘+Enter)"}
+                  aria-label="Send message"
+                >
+                  {sending ? (
+                    <span className="size-1.5 animate-pulse rounded-full bg-on-brand" />
+                  ) : (
+                    <PaperPlaneTiltIcon size={15} />
+                  )}
+                </Button>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -548,10 +804,6 @@ function DiscussionConsole() {
                 >
                   Clear log
                 </Button>
-                <Button variant="primary" size="sm" onClick={() => void send()} disabled={sending || !prompt.trim()}>
-                  <PaperPlaneTiltIcon size={14} />
-                  {sending ? "waiting for agent…" : "Send"}
-                </Button>
               </div>
             </div>
 
@@ -564,7 +816,11 @@ function DiscussionConsole() {
 
             <div
               ref={logRef}
-              className="max-h-[26rem] min-h-[12rem] space-y-2.5 overflow-y-auto rounded-2xl border border-hairline bg-surface-2/50 p-3"
+              onScroll={(event) => {
+                const el = event.currentTarget;
+                atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+              }}
+              className="max-h-[26rem] min-h-[12rem] space-y-1 overflow-y-auto rounded-2xl border border-hairline bg-surface-2/50 p-3"
             >
               {dropped > 0 ? (
                 <p className="mb-1 rounded-lg bg-warn/8 px-2.5 py-1.5 text-[11px] text-warn">
@@ -583,47 +839,129 @@ function DiscussionConsole() {
                     : "No messages yet. Ask an agent what it is working on, or ask it to review a peer's result."}
                 </p>
               ) : (
-                visibleMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex gap-2.5 ${message.from === "you" ? "flex-row-reverse" : ""}`}
-                  >
-                    <span
-                      className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${
-                        message.from === "you" ? "bg-brand/15 text-brand" : "bg-surface-3 text-ink-muted"
-                      }`}
-                    >
-                      {message.from === "you" ? (
-                        <UserCircleIcon size={15} />
-                      ) : (
-                        <CpuIcon size={15} />
-                      )}
-                    </span>
-                    <div
-                      className={`min-w-0 max-w-[85%] rounded-2xl px-3 py-2 ${
-                        message.from === "you"
-                          ? "bg-brand/12 text-ink"
-                          : message.failed
-                            ? "border border-danger/30 bg-danger/8 text-danger"
-                            : "bg-surface-3 text-ink-muted"
-                      }`}
-                    >
-                      <p className="mb-1 flex items-center gap-1.5 text-[10.5px] text-ink-subtle">
-                        <span className="font-mono">{message.profile}</span>
-                        {message.elapsedMs ? (
-                          <span className="font-mono">
-                            {new Date(message.ts).toLocaleTimeString("en-GB")} · {(message.elapsedMs / 1000).toFixed(1)}s
-                          </span>
-                        ) : (
-                          <span className="font-mono">{new Date(message.ts).toLocaleTimeString("en-GB")}</span>
+                <>
+                  {visibleMessages.map((message, index) => {
+                    const mine = message.from === "you";
+                    const prev = visibleMessages[index - 1];
+                    const next = visibleMessages[index + 1];
+                    // Group a run from one sender: the avatar and the name only
+                    // appear on its first message, and the tail only on the
+                    // last, which is how a messenger reads.
+                    const startsGroup = !prev || prev.from !== message.from;
+                    const endsGroup = !next || next.from !== message.from;
+                    // A new calendar day always breaks the run, even when the
+                    // same sender continues, so the divider is never swallowed
+                    // by a group that happens to span midnight.
+                    const newDay = !prev || !sameDay(prev.ts, message.ts);
+                    const showName = !mine && (startsGroup || newDay);
+                    return (
+                      <div key={message.id}>
+                        {newDay ? (
+                          <p className="flex items-center gap-2 pb-1 pt-3 text-[10.5px] font-medium text-ink-subtle first:pt-0">
+                            <span className="h-px flex-1 bg-hairline" />
+                            {dayLabel(message.ts)}
+                            <span className="h-px flex-1 bg-hairline" />
+                          </p>
+                        ) : null}
+                      <div
+                        className={cn(
+                          "group/msg flex gap-2",
+                          startsGroup || newDay ? "pt-1" : "pt-0.5",
+                          mine && "flex-row-reverse",
                         )}
-                      </p>
-                      <p className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed">
-                        {message.text}
-                      </p>
+                      >
+                        {/* The slot is always reserved so the bubbles stay in
+                            two clean columns even mid-group. */}
+                        <span className="grid size-7 shrink-0 place-items-center" aria-hidden="true">
+                          {!mine && startsGroup ? (
+                            <AgentAvatar profile={message.profile} />
+                          ) : null}
+                        </span>
+                        <div className="min-w-0 max-w-[78%]">
+                          {showName ? (
+                            <p className="mb-0.5 ml-1 font-mono text-[10.5px] text-ink-subtle">
+                              {message.profile}
+                            </p>
+                          ) : null}
+                          <div className="relative">
+                            <div
+                              className={cn(
+                                "whitespace-pre-wrap break-words px-3 py-2 text-[12.5px] leading-relaxed",
+                                mine ? "bg-brand text-on-brand" : "bg-surface-3 text-ink",
+                                message.failed && "border border-danger/30 bg-danger/8",
+                                // The tail points at the sender.
+                                endsGroup ? (mine ? RADIUS_MINE : RADIUS_THEIRS) : "rounded-[18px]",
+                              )}
+                            >
+                              {message.replyTo ? (
+                                <span
+                                  className={cn(
+                                    "mb-1.5 block border-l-2 pl-2 text-[11.5px] leading-snug",
+                                    mine
+                                      ? "border-on-brand/45 text-on-brand/75"
+                                      : "border-ink-subtle/50 text-ink-subtle",
+                                  )}
+                                >
+                                  <span className="font-medium">
+                                    {message.replyTo.from === "you" ? "You" : message.replyTo.profile}
+                                  </span>
+                                  {": "}
+                                  {message.replyTo.snippet}
+                                </span>
+                              ) : null}
+                              {message.text}
+                            </div>
+                            {/* Actions sit outside the bubble so they are not
+                                painted in the bubble's own fill. */}
+                            <div
+                              className={cn(
+                                "absolute -top-2 flex gap-0.5 opacity-0 transition-opacity",
+                                "focus-within:opacity-100 group-hover/msg:opacity-100",
+                                "[@media(hover:none)]:opacity-100",
+                                mine ? "-left-20" : "-right-20",
+                              )}
+                            >
+                              <BubbleAction
+                                label="Reply"
+                                onClick={() => setReplyTo(message)}
+                              >
+                                <ArrowBendDownLeftIcon size={12} />
+                              </BubbleAction>
+                              <BubbleAction
+                                label="Copy"
+                                onClick={() => {
+                                  void navigator.clipboard?.writeText(message.text);
+                                  toast.success("Copied", {
+                                    description:
+                                      message.text.length > 60
+                                        ? `${message.text.slice(0, 60)}…`
+                                        : message.text,
+                                  });
+                                }}
+                              >
+                                <CopyIcon size={12} />
+                              </BubbleAction>
+                            </div>
+                          </div>
+                          {endsGroup ? (
+                            <p
+                              className={cn(
+                                "mt-0.5 flex items-center gap-1 font-mono text-[10px] text-ink-subtle",
+                                mine && "justify-end",
+                              )}
+                            >
+                              {new Date(message.ts).toLocaleTimeString("en-GB")}
+                              {message.elapsedMs ? ` · ${(message.elapsedMs / 1000).toFixed(1)}s` : ""}
+                              {message.failed ? " · not delivered" : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                    );
+                  })}
+                  {sending ? <TypingBubble profile={target} /> : null}
+                </>
               )}
             </div>
           </div>

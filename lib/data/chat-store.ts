@@ -26,6 +26,20 @@ const MAX_MESSAGE_CHARS = 32_000;
 
 export type ChatRole = "you" | "agent";
 
+/**
+ * The message a turn is answering, quoted inside its bubble.
+ *
+ * Only display metadata: it is a local convenience for reading the thread and
+ * is never sent to the agent, so a stale or hand-edited reference can mislead
+ * on screen but cannot change what the model is asked.
+ */
+export type ReplyRef = {
+  id: string;
+  from: ChatRole;
+  profile: string;
+  snippet: string;
+};
+
 export type StoredMessage = {
   id: string;
   from: ChatRole;
@@ -34,6 +48,7 @@ export type StoredMessage = {
   ts: number;
   elapsedMs?: number;
   failed?: boolean;
+  replyTo?: ReplyRef;
 };
 
 export type Transcript = {
@@ -92,15 +107,60 @@ export function newMessage(
   from: ChatRole,
   profile: string,
   text: string,
-  extra: { elapsedMs?: number; failed?: boolean } = {},
+  extra: { elapsedMs?: number; failed?: boolean; replyTo?: ReplyRef } = {},
 ): StoredMessage {
-  return {
+  const message: StoredMessage = {
     id: `${from}-${randomUUID()}`,
     from,
     profile,
     text: clamp(text),
     ts: Date.now(),
     ...extra,
+  };
+  // Normalise on the way in as well as on the way out, so what is stored is
+  // exactly what will later be rendered.
+  const reply = normalizeReply(message.replyTo);
+  if (reply) message.replyTo = reply;
+  else delete message.replyTo;
+  return message;
+}
+
+/** Cap a quoted snippet; a quote is a pointer, not a second copy of the text. */
+const MAX_SNIPPET = 240;
+
+/** Drop a malformed `replyTo` rather than rendering whatever the file claims. */
+function sanitiseMessage(m: StoredMessage): StoredMessage {
+  if (m.replyTo === undefined) return m;
+  const reply = normalizeReply(m.replyTo);
+  if (!reply) {
+    // Copy rather than delete, so no field is read only to be discarded.
+    const cleaned: StoredMessage = { ...m };
+    delete cleaned.replyTo;
+    return cleaned;
+  }
+  return { ...m, replyTo: reply };
+}
+
+/**
+ * Accept a reply reference only if it is well formed.
+ *
+ * `isMessage` deliberately ignores unknown fields, so a hand-edited transcript
+ * could otherwise carry a `replyTo` of any shape and have it rendered straight
+ * into the thread. Anything unrecognised is dropped, leaving the message
+ * readable without its quote.
+ */
+function normalizeReply(value: unknown): ReplyRef | null {
+  if (typeof value !== "object" || value === null) return null;
+  const r = value as Record<string, unknown>;
+  if (typeof r.id !== "string" || !r.id) return null;
+  if (r.from !== "you" && r.from !== "agent") return null;
+  if (typeof r.profile !== "string" || !r.profile) return null;
+  if (typeof r.snippet !== "string") return null;
+  return {
+    id: r.id.slice(0, 200),
+    from: r.from,
+    profile: r.profile.slice(0, 200),
+    snippet: clamp(r.snippet.slice(0, MAX_SNIPPET)),
   };
 }
 
@@ -128,7 +188,7 @@ export async function readTranscript(profile: string): Promise<Transcript> {
   if (!Array.isArray(parsed.messages)) return { profile, messages: [], dropped: 0 };
 
   // Re-trim defensively: a hand-edited or older file may exceed the cap.
-  const all = parsed.messages.filter(isMessage);
+  const all = parsed.messages.filter(isMessage).map(sanitiseMessage);
   const overflow = Math.max(0, all.length - MAX_MESSAGES);
   const carried = typeof parsed.dropped === "number" && parsed.dropped > 0 ? parsed.dropped : 0;
 

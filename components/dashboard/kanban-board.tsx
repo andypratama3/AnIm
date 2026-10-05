@@ -313,14 +313,30 @@ export function KanbanBoard({
     const current = allTasks.find((task) => task.id === dragId);
     if (!current || current.status === targetStatus) return;
 
-    await move(dragId, targetStatus);
-    toast.success(`${current.title} → ${COLUMNS.find((c) => c.id === targetStatus)?.label}`, {
+    const result = await move(dragId, targetStatus);
+    const label = COLUMNS.find((c) => c.id === targetStatus)?.label ?? targetStatus;
+    if (!result.ok) {
+      // Hermes moves its own work; the console only holds the one transition it
+      // exposes. Say so plainly rather than leaving the card where it was with
+      // no explanation.
+      toast.error(`Cannot move to ${label}`, {
+        description: result.detail ?? result.reason,
+      });
+      return;
+    }
+    toast.success(`${current.title} → ${label}`, {
       description: `Assigned to ${current.agent}.`,
     });
   };
 
   const confirmDelete = async (task: Task) => {
-    await remove(task.id);
+    const result = await remove(task.id);
+    if (!result.ok) {
+      // Hermes keeps work in flight on its own board; the console refuses to
+      // make a task look deleted when it is still running somewhere.
+      toast.error("Cannot remove task", { description: result.detail ?? result.reason });
+      return;
+    }
     toast.success("Task removed", { description: task.title });
   };
 
@@ -400,8 +416,12 @@ export function KanbanBoard({
         defaultAgent={initialAgent}
         onClose={() => setCreating(null)}
         onSubmit={async (input) => {
-          await create(input);
+          const result = await create(input);
           setCreating(null);
+          if (!result.ok) {
+            toast.error("Task not created", { description: result.reason });
+            return;
+          }
           toast.success("Task created", { description: input.title });
         }}
       />
