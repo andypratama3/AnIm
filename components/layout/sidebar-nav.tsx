@@ -13,6 +13,7 @@ import {
   SquaresFourIcon,
   CirclesThreePlusIcon,
   ChatDotsIcon,
+  UsersIcon,
 } from "@phosphor-icons/react";
 import { BRAND, NAV_GROUPS } from "@/lib/brand";
 import { useMesh } from "@/lib/hooks/use-data";
@@ -24,6 +25,7 @@ import { AgentGlyph } from "@/components/dashboard/agent-glyph";
 
 const ICONS = {
   SquaresFour: SquaresFourIcon,
+  Users: UsersIcon,
   Robot: RobotIcon,
   Pulse: PulseIcon,
   Kanban: KanbanIcon,
@@ -110,7 +112,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     href={item.href}
                     onClick={onNavigate}
                     className={cn(
-                      "group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[13px] transition-colors duration-300",
+                      "group relative flex items-center gap-3 rounded-2xl px-3 py-2.5 text-[13px] transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
                       active ? "text-ink" : "text-ink-muted hover:text-ink",
                     )}
                   >
@@ -123,7 +125,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
                     ) : null}
                     <span
                       className={cn(
-                        "relative grid size-7 shrink-0 place-items-center rounded-lg transition-colors duration-300",
+                        "relative grid size-7 shrink-0 place-items-center rounded-lg transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
                         active ? "text-brand" : "text-ink-subtle group-hover:text-ink-muted",
                       )}
                     >
@@ -168,7 +170,7 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
               <button
                 type="button"
                 onClick={() => setFocusAgent(agent.id)}
-                className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors duration-300 hover:bg-surface-2"
+                className="flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-surface-2 hover:-translate-y-px"
               >
                 <AgentGlyph id={agent.id} accent={agent.accent} size={22} status={agent.status} />
                 <span className="min-w-0 flex-1 truncate text-[12px] text-ink-muted">

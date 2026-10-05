@@ -55,9 +55,10 @@ export function StatCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
       onClick={onClick}
+      whileHover={onClick ? { y: -4 } : undefined}
       className={cn(
         "plate group relative overflow-hidden rounded-[1.5rem] p-4",
-        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lift transition-all duration-700",
+        onClick && "cursor-pointer transition-all duration-700",
         className,
       )}
     >

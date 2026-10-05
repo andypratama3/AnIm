@@ -90,7 +90,7 @@ export default function SettingsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SectionCard title="Live updates" description="How often the console polls the gateways.">
           <div className="space-y-5">
             <Row
@@ -153,7 +153,7 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => setTheme(option)}
                     className={cn(
-                      "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[12.5px] transition-all duration-500",
+                      "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[12.5px] transition-all duration-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                       mounted && theme === option
                         ? "border-brand/40 bg-brand/10 text-ink"
                         : "border-hairline text-ink-muted hover:bg-surface-2",
@@ -221,7 +221,7 @@ export default function SettingsPage() {
           </TabsList>
 
           <TabsContent value="profiles">
-            <ul className="grid grid-cols-1 grid gap-2 sm:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {PROFILES.map((profile) => {
                 const live0 = data?.agents.find((agent) => agent.id === profile.id);
                 return (
@@ -298,7 +298,7 @@ export default function SettingsPage() {
         </Tabs>
       </SectionCard>
 
-      <div className="grid grid-cols-1 grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <SectionCard
           title="Shortcuts"
           description="Global keys available on every page."

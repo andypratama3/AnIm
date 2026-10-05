@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
 import {
   ChatCircleDotsIcon,
   PaperPlaneTiltIcon,
@@ -491,47 +492,70 @@ function DiscussionConsole() {
                     : "No messages yet. Ask an agent what it is working on, or ask it to review a peer's result."}
                 </p>
               ) : (
-                visibleMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    className={`flex gap-2.5 ${message.from === "you" ? "flex-row-reverse" : ""}`}
-                  >
-                    <span
-                      className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-full ${
-                        message.from === "you" ? "bg-brand/15 text-brand" : "bg-surface-3 text-ink-muted"
-                      }`}
+                <AnimatePresence mode="popLayout">
+                  {visibleMessages.map((message, index) => (
+                    <motion.div
+                      key={message.id}
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                      transition={{ duration: 0.3, delay: index * 0.05 }}
+                      className={`flex gap-2.5 ${message.from === "you" ? "flex-row-reverse" : ""}`}
                     >
-                      {message.from === "you" ? (
-                        <UserCircleIcon size={15} />
-                      ) : (
-                        <CpuIcon size={15} />
-                      )}
-                    </span>
-                    <div
-                      className={`min-w-0 max-w-[85%] rounded-2xl px-3 py-2 ${
-                        message.from === "you"
-                          ? "bg-brand/12 text-ink"
-                          : message.failed
-                            ? "border border-danger/30 bg-danger/8 text-danger"
-                            : "bg-surface-3 text-ink-muted"
-                      }`}
-                    >
-                      <p className="mb-1 flex items-center gap-1.5 text-[10.5px] text-ink-subtle">
-                        <span className="font-mono">{message.profile}</span>
-                        {message.elapsedMs ? (
-                          <span className="font-mono">
-                            {new Date(message.ts).toLocaleTimeString("en-GB")} · {(message.elapsedMs / 1000).toFixed(1)}s
-                          </span>
+                      <span
+                        className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full border-2 shadow-sm ${
+                          message.from === "you"
+                            ? "border-brand/30 bg-gradient-to-br from-brand/20 to-brand/10 text-brand"
+                            : "border-surface-4 bg-gradient-to-br from-surface-3 to-surface-2 text-ink-muted"
+                        }`}
+                      >
+                        {message.from === "you" ? (
+                          <UserCircleIcon size={16} weight="fill" />
                         ) : (
-                          <span className="font-mono">{new Date(message.ts).toLocaleTimeString("en-GB")}</span>
+                          <CpuIcon size={16} weight="fill" />
                         )}
-                      </p>
-                      <p className="whitespace-pre-wrap break-words text-[12.5px] leading-relaxed">
-                        {message.text}
-                      </p>
-                    </div>
-                  </div>
-                ))
+                      </span>
+                      <div
+                        className={`min-w-0 max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                          message.from === "you"
+                            ? "bg-gradient-to-br from-brand/15 to-brand/8 text-ink border border-brand/20"
+                            : message.failed
+                              ? "border-2 border-danger/40 bg-gradient-to-br from-danger/12 to-danger/6 text-danger"
+                              : "bg-gradient-to-br from-surface-3 to-surface-2 text-ink-muted border border-hairline"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center gap-2">
+                          <span className="flex items-center gap-1.5 rounded-full bg-black/5 px-2 py-0.5 text-[10.5px] font-semibold text-ink-subtle">
+                            {message.from === "you" ? (
+                              <UserCircleIcon size={10} weight="fill" />
+                            ) : (
+                              <CpuIcon size={10} weight="fill" />
+                            )}
+                            <span className="font-mono">{message.profile}</span>
+                          </span>
+                          {message.elapsedMs ? (
+                            <span className="text-[10px] font-mono text-ink-subtle">
+                              {new Date(message.ts).toLocaleTimeString("en-GB")} · {(message.elapsedMs / 1000).toFixed(1)}s
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-mono text-ink-subtle">
+                              {new Date(message.ts).toLocaleTimeString("en-GB")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">
+                          {message.text}
+                        </p>
+                        {message.failed && (
+                          <div className="mt-2 flex items-center gap-1.5 text-[10.5px] text-danger">
+                            <ShieldWarningIcon size={10} weight="fill" />
+                            <span>Delivery failed</span>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               )}
             </div>
           </div>

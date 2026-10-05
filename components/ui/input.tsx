@@ -9,7 +9,7 @@ export const Input = React.forwardRef<HTMLInputElement, React.InputHTMLAttribute
       <input
         ref={ref}
         className={cn(
-          "h-10 w-full rounded-xl border border-hairline bg-surface-2/70 px-3.5 text-sm text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.05)] transition-all duration-300 placeholder:text-ink-subtle hover:border-hairline-strong focus:border-brand/50 focus:bg-surface-2 focus:outline-none focus:ring-4 focus:ring-brand/10",
+          "h-10 w-full rounded-xl border border-hairline bg-surface-2/70 px-3.5 text-sm text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.05)] transition-all duration-300 placeholder:text-ink-subtle hover:border-hairline-strong focus:border-brand/50 focus:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:ring-offset-2 focus:ring-offset-background",
           className,
         )}
         {...props}
@@ -26,7 +26,7 @@ export const Textarea = React.forwardRef<
     <textarea
       ref={ref}
       className={cn(
-        "w-full resize-none rounded-xl border border-hairline bg-surface-2/70 px-3.5 py-3 text-sm leading-relaxed text-ink transition-all duration-300 placeholder:text-ink-subtle hover:border-hairline-strong focus:border-brand/50 focus:bg-surface-2 focus:outline-none focus:ring-4 focus:ring-brand/10",
+        "w-full resize-none rounded-xl border border-hairline bg-surface-2/70 px-3.5 py-3 text-sm leading-relaxed text-ink transition-all duration-300 placeholder:text-ink-subtle hover:border-hairline-strong focus:border-brand/50 focus:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-brand/20 focus:ring-offset-2 focus:ring-offset-background",
         className,
       )}
       {...props}

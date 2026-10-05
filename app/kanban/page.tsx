@@ -62,7 +62,7 @@ function KanbanInner() {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {counts.map((column) => (
-          <div key={column.id} className="plate rounded-[1.25rem] p-3.5">
+          <div key={column.id} className="plate rounded-[1.25rem] p-3.5 shadow-sm">
             <div className="flex items-center gap-2">
               <span className="size-1.5 rounded-full" style={{ background: column.accent }} />
               <span className="text-[11px] uppercase tracking-[0.14em] text-ink-subtle">
@@ -97,7 +97,7 @@ function KanbanInner() {
         </Suspense>
       </SectionCard>
 
-      <section className="grid grid-cols-1 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <SectionCard title="Owning peers" description="Tap a peer to inspect its load.">
           <AgentStrip agents={agents} onPick={setFocusAgent} />
           <div className="mt-4 border-t border-hairline pt-4">

@@ -96,7 +96,7 @@ export default function NotesPage() {
         }
       />
 
-      <div className="grid grid-cols-1 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.9fr)]">
         <SectionCard
           title="Notes"
           description="Newest first"
@@ -159,7 +159,7 @@ export default function NotesPage() {
                         type="button"
                         onClick={() => setSelected(note.id)}
                         className={cn(
-                          "w-full rounded-xl px-3 py-2.5 text-left transition-colors duration-300",
+                          "w-full rounded-xl px-3 py-2.5 text-left transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                           current?.id === note.id
                             ? "bg-brand/10 ring-1 ring-brand/30"
                             : "hover:bg-surface-2/70",

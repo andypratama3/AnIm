@@ -6,21 +6,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "group/btn relative inline-flex select-none items-center justify-center gap-2 overflow-hidden rounded-full font-medium transition-[transform,background-color,border-color,color,box-shadow,opacity] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0",
+  "group/btn relative inline-flex select-none items-center justify-center gap-2 overflow-hidden rounded-full font-medium transition-[transform,background-color,border-color,color,box-shadow,opacity] duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
   {
     variants: {
       variant: {
         primary:
-          "text-white shadow-[0_1px_0_oklch(1_0_0/0.28)_inset,0_10px_30px_-10px_var(--brand)] bg-[linear-gradient(100deg,var(--brand-3),var(--brand)_45%,var(--brand-2))] hover:shadow-[0_1px_0_oklch(1_0_0/0.35)_inset,0_18px_44px_-12px_var(--brand)]",
+          "text-white shadow-[0_1px_0_oklch(1_0_0/0.28)_inset,0_10px_30px_-10px_var(--brand)] bg-[linear-gradient(100deg,var(--brand-3),var(--brand)_45%,var(--brand-2))] hover:shadow-[0_1px_0_oklch(1_0_0/0.35)_inset,0_18px_44px_-12px_var(--brand)] hover:-translate-y-px",
         glass:
-          "glass border border-hairline text-ink hover:border-hairline-strong hover:bg-surface-2",
+          "glass border border-hairline text-ink hover:border-hairline-strong hover:bg-surface-2 hover:-translate-y-px",
         outline:
-          "border border-hairline-strong bg-transparent text-ink hover:bg-surface-2 hover:border-brand/40",
-        ghost: "text-ink-muted hover:bg-surface-2 hover:text-ink",
-        subtle: "bg-surface-2 text-ink hover:bg-surface-3 border border-hairline",
+          "border border-hairline-strong bg-transparent text-ink hover:bg-surface-2 hover:border-brand/40 hover:-translate-y-px",
+        ghost: "text-ink-muted hover:bg-surface-2 hover:text-ink hover:-translate-y-px",
+        subtle: "bg-surface-2 text-ink hover:bg-surface-3 border border-hairline hover:-translate-y-px",
         danger:
-          "bg-danger/12 text-danger border border-danger/25 hover:bg-danger/20 hover:border-danger/40",
-        link: "text-brand hover:text-brand-2 underline-offset-4 hover:underline rounded-md px-0",
+          "bg-danger/12 text-danger border border-danger/25 hover:bg-danger/20 hover:border-danger/40 hover:-translate-y-px",
+        link: "text-brand hover:text-brand-2 underline-offset-4 hover:underline rounded-md px-0 hover:-translate-y-px",
       },
       size: {
         xs: "h-7 px-3 text-[11px] [&_svg]:size-3.5",

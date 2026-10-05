@@ -168,7 +168,7 @@ function ActivityInner() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <SectionCard
           title="Event log"
           description="Newest first. Select a row for full context."
@@ -216,7 +216,7 @@ function ActivityInner() {
                     type="button"
                     onClick={() => setSelected(event)}
                     className={cn(
-                      "flex w-full items-start gap-3 px-5 py-3 text-left transition-colors duration-300 hover:bg-surface-2/60",
+                      "flex w-full items-start gap-3 px-5 py-3 text-left transition-all duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-surface-2/60 hover:-translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                       selected?.id === event.id && "bg-brand/6",
                     )}
                   >
@@ -321,7 +321,7 @@ function ActivityInner() {
                     <span className="w-16 shrink-0 text-[11px] text-ink-muted">{option.label}</span>
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
                       <div
-                        className="h-full rounded-full transition-[width] duration-700"
+                        className="h-full rounded-full transition-[width] duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]"
                         style={{
                           width: `${pct}%`,
                           background: LEVEL_TONE[option.value as EventLevel],

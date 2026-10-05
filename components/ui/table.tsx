@@ -40,7 +40,7 @@ export function TR({
   return (
     <tr
       className={cn(
-        "border-b border-hairline transition-colors duration-300 last:border-0",
+        "border-b border-hairline transition-colors duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] last:border-0",
         interactive && "cursor-pointer hover:bg-surface-2/70 data-[state=selected]:bg-brand/8",
         className,
       )}
